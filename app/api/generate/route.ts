@@ -6,6 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -88,7 +90,7 @@ export async function POST(req: Request) {
       collaborators,
     });
 
-    // 5. Store in SQLite Database
+    // 5. Store in Database
     try {
       let dbUser = null;
       if (session?.user?.username) {
