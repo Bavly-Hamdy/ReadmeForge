@@ -23,6 +23,14 @@ export default function Home() {
     }
   }, [theme]);
 
+  // Clean up URL query parameters (e.g. error=OAuthCallback) on page mount
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.search) {
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+    }
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col justify-between transition-colors duration-200 bg-white dark:bg-[#0a0a0a] text-neutral-900 dark:text-neutral-100">
       {/* Header */}

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   GitBranch,
   ArrowRight,
@@ -15,6 +15,12 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
+  Search,
+  Filter,
+  Brain,
+  BarChart3,
+  Sparkles,
+  CheckCircle2,
 } from "lucide-react";
 import { useReadmeStore } from "@/lib/store/use-readme-store";
 
@@ -65,6 +71,14 @@ const PERSONA_CARDS = [
   },
 ];
 
+const STAGES = [
+  { id: 0, title: "Extracting AST Manifests & Recursive Git Tree", icon: Search, progress: 20 },
+  { id: 1, title: "Filtering Codebase Entrypoints & API Routes", icon: Filter, progress: 40 },
+  { id: 2, title: "Summarizing Exported Interfaces & Sub-modules", icon: Brain, progress: 65 },
+  { id: 3, title: "Constructing Unified RepoDigest Topology", icon: BarChart3, progress: 85 },
+  { id: 4, title: "Synthesizing GFM README & Mermaid SVG Diagrams", icon: Sparkles, progress: 95 },
+];
+
 export function GeneratorForm() {
   const {
     repoUrl,
@@ -92,6 +106,21 @@ export function GeneratorForm() {
   const [collabName, setCollabName] = useState("");
   const [collabRole, setCollabRole] = useState("");
   const [collabHandle, setCollabHandle] = useState("");
+  const [currentStage, setCurrentStage] = useState(0);
+
+  // Cycle through progress stages while generating
+  useEffect(() => {
+    if (!isGenerating) {
+      setCurrentStage(0);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setCurrentStage((prev) => (prev < STAGES.length - 1 ? prev + 1 : prev));
+    }, 1800);
+
+    return () => clearInterval(interval);
+  }, [isGenerating]);
 
   const handleAddCollaborator = (e: React.FormEvent) => {
     e.preventDefault();
@@ -114,6 +143,7 @@ export function GeneratorForm() {
     }
 
     setIsGenerating(true);
+    setCurrentStage(0);
     setError(null);
     setGeneratedMarkdown(null);
 
@@ -146,6 +176,9 @@ export function GeneratorForm() {
       setIsGenerating(false);
     }
   };
+
+  const activeStageObj = STAGES[currentStage];
+  const StageIcon = activeStageObj.icon;
 
   return (
     <div className="w-full max-w-4xl mx-auto flex flex-col items-center">
@@ -232,7 +265,7 @@ export function GeneratorForm() {
             {isGenerating ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-neutral-100 dark:text-neutral-900" />
-                <span>Building README...</span>
+                <span>Processing AST...</span>
               </>
             ) : (
               <>
@@ -242,6 +275,56 @@ export function GeneratorForm() {
             )}
           </button>
         </div>
+
+        {/* Live Interactive Progress Stepper */}
+        {isGenerating && (
+          <div className="w-full p-5 rounded-xl border border-neutral-300 dark:border-neutral-800 bg-neutral-100/90 dark:bg-neutral-900/90 text-left animate-in fade-in duration-300 shadow-md">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2 text-xs font-mono font-semibold text-neutral-900 dark:text-neutral-100">
+                <StageIcon className="w-4 h-4 text-neutral-700 dark:text-neutral-300 animate-pulse" />
+                <span>Stage {currentStage + 1} of 5: {activeStageObj.title}</span>
+              </div>
+              <span className="text-xs font-mono font-bold text-neutral-600 dark:text-neutral-400">
+                {activeStageObj.progress}%
+              </span>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="w-full bg-neutral-200 dark:bg-neutral-800 h-2 rounded-full overflow-hidden mb-4">
+              <div
+                className="bg-neutral-900 dark:bg-neutral-100 h-full transition-all duration-500 ease-out"
+                style={{ width: `${activeStageObj.progress}%` }}
+              />
+            </div>
+
+            {/* Stage Indicators */}
+            <div className="grid grid-cols-5 gap-1 pt-1">
+              {STAGES.map((s) => {
+                const isCompleted = s.id < currentStage;
+                const isCurrent = s.id === currentStage;
+                return (
+                  <div
+                    key={s.id}
+                    className={`flex flex-col items-center p-2 rounded-lg border text-center transition-all ${
+                      isCurrent
+                        ? "bg-white dark:bg-neutral-950 border-neutral-400 dark:border-neutral-600 text-neutral-900 dark:text-neutral-100"
+                        : isCompleted
+                        ? "bg-neutral-200/60 dark:bg-neutral-800/60 border-neutral-300 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400"
+                        : "bg-transparent border-transparent text-neutral-400 opacity-50"
+                    }`}
+                  >
+                    {isCompleted ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 mb-1" />
+                    ) : (
+                      <span className="text-[10px] font-mono font-bold mb-1">{s.id + 1}</span>
+                    )}
+                    <span className="text-[9px] font-mono line-clamp-1">{s.title.split(" ")[0]}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* 3. Advanced Team & Metadata Accordion */}
         <div className="w-full text-left minimal-card rounded-xl border border-neutral-300 dark:border-neutral-800 overflow-hidden bg-white/70 dark:bg-neutral-950/60">
