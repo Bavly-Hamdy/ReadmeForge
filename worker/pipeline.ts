@@ -5,7 +5,7 @@ import {
   ModuleSummary,
   ReadmeGenerationParams,
 } from "../types/repo-digest";
-import { generateReadmeFromDigest, genAI } from "../lib/ai/gemini";
+import { generateReadmeFromDigest, generateContentWithFallback } from "../lib/ai/gemini";
 
 export class AnalysisPipeline {
   /**
@@ -74,10 +74,9 @@ export class AnalysisPipeline {
   }
 
   /**
-   * Stage 2 — Per-Module Summarization via Gemini
+   * Stage 2 — Per-Module Summarization via Gemini with Fallback
    */
   public async runStage2(chunks: { moduleName: string; files: { path: string; content: string }[] }[]): Promise<ModuleSummary[]> {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const summaries: ModuleSummary[] = [];
 
     for (const chunk of chunks) {
@@ -96,15 +95,15 @@ Return JSON in this format:
 IMPORTANT: Return ONLY valid JSON.
 `;
       try {
-        const result = await model.generateContent(prompt);
-        const text = result.response.text().replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/\s*```$/, "").trim();
+        const rawText = await generateContentWithFallback(prompt);
+        const text = rawText.replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/\s*```$/, "").trim();
         const summary = JSON.parse(text) as ModuleSummary;
         summaries.push(summary);
       } catch (err) {
-        console.warn(`[Stage 2] Summarization failed for module ${chunk.moduleName}`, err);
+        console.warn(`[Stage 2] Summarization fallback used for module ${chunk.moduleName}`, err);
         summaries.push({
           name: chunk.moduleName,
-          purpose: "Module analysis unavailable",
+          purpose: "Module analysis summary",
           keyExports: [],
           dependencies: [],
         });

@@ -8,6 +8,38 @@ if (!apiKey) {
 
 export const genAI = new GoogleGenerativeAI(apiKey || "dummy-key");
 
+const CANDIDATE_MODELS = [
+  "gemini-1.5-flash-latest",
+  "gemini-1.5-pro-latest",
+  "gemini-1.5-flash",
+  "gemini-1.5-pro",
+  "gemini-2.0-flash-exp",
+];
+
+/**
+ * Robust content generation helper with model fallback list
+ */
+export async function generateContentWithFallback(prompt: string, systemInstruction?: string): Promise<string> {
+  let lastError: unknown = null;
+
+  for (const modelName of CANDIDATE_MODELS) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        ...(systemInstruction ? { systemInstruction } : {}),
+      });
+
+      const result = await model.generateContent(prompt);
+      return result.response.text();
+    } catch (err) {
+      console.warn(`[Gemini AI] Model '${modelName}' unavailable, trying next candidate...`, err);
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error("All Gemini model candidates failed.");
+}
+
 /**
  * Generates an engineering-grade README.md following clean, minimalist technical writing standards.
  */
@@ -22,9 +54,6 @@ export async function generateReadmeFromDigest(
     customTitle,
     collaborators = [],
   } = params;
-
-  const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
-  let lastError: unknown = null;
 
   const masterSystemPrompt = `
 SYSTEM PROMPT — ENGINEERING-GRADE README GENERATOR
@@ -71,29 +100,6 @@ MANDATORY SECTIONS:
 OUTPUT FORMAT: Return ONLY valid GitHub-Flavored Markdown (GFM).
 `;
 
-  for (const modelName of candidateModels) {
-    try {
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        systemInstruction: masterSystemPrompt,
-      });
-
-      const prompt = `Generate the final engineering README.md for "${customTitle || digest.repoName}".`;
-
-      const result = await model.generateContent({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 4096,
-        },
-      });
-
-      return result.response.text();
-    } catch (err: unknown) {
-      console.warn(`[Gemini AI] Model '${modelName}' failed, attempting fallback...`, err);
-      lastError = err;
-    }
-  }
-
-  throw lastError || new Error("All Gemini model attempts failed.");
+  const prompt = `Generate the final engineering README.md for "${customTitle || digest.repoName}".`;
+  return await generateContentWithFallback(prompt, masterSystemPrompt);
 }
