@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   GitBranch,
   ArrowRight,
@@ -72,11 +72,11 @@ const PERSONA_CARDS = [
 ];
 
 const STAGES = [
-  { id: 0, title: "Extracting AST Manifests & Recursive Git Tree", icon: Search, progress: 20 },
-  { id: 1, title: "Filtering Codebase Entrypoints & API Routes", icon: Filter, progress: 40 },
-  { id: 2, title: "Summarizing Exported Interfaces & Sub-modules", icon: Brain, progress: 65 },
-  { id: 3, title: "Constructing Unified RepoDigest Topology", icon: BarChart3, progress: 85 },
-  { id: 4, title: "Synthesizing GFM README & Mermaid SVG Diagrams", icon: Sparkles, progress: 95 },
+  { id: 0, title: "Stage 1/5: Extracting AST Manifests & Git Trees", icon: Search, progress: 20 },
+  { id: 1, title: "Stage 2/5: Filtering Entrypoints & API Routes", icon: Filter, progress: 40 },
+  { id: 2, title: "Stage 3/5: Summarizing Exported Interfaces", icon: Brain, progress: 65 },
+  { id: 3, title: "Stage 4/5: Constructing RepoDigest Topology", icon: BarChart3, progress: 85 },
+  { id: 4, title: "Stage 5/5: Synthesizing GFM & Mermaid SVG", icon: Sparkles, progress: 95 },
 ];
 
 export function GeneratorForm() {
@@ -108,6 +108,8 @@ export function GeneratorForm() {
   const [collabHandle, setCollabHandle] = useState("");
   const [currentStage, setCurrentStage] = useState(0);
 
+  const stepperRef = useRef<HTMLDivElement>(null);
+
   // Cycle through progress stages while generating
   useEffect(() => {
     if (!isGenerating) {
@@ -115,9 +117,14 @@ export function GeneratorForm() {
       return;
     }
 
+    // Scroll to stepper when generation starts
+    setTimeout(() => {
+      stepperRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+
     const interval = setInterval(() => {
       setCurrentStage((prev) => (prev < STAGES.length - 1 ? prev + 1 : prev));
-    }, 1800);
+    }, 1600);
 
     return () => clearInterval(interval);
   }, [isGenerating]);
@@ -243,7 +250,7 @@ export function GeneratorForm() {
         </div>
       </div>
 
-      {/* 2. Main Repo URL Form - High Contrast Input Bar */}
+      {/* 2. Main Repo URL Form */}
       <form onSubmit={handleSubmit} className="w-full flex flex-col gap-4">
         <div className="w-full minimal-card p-2 rounded-xl flex flex-col sm:flex-row gap-2 border border-neutral-300 dark:border-neutral-800 shadow-sm bg-neutral-100 dark:bg-neutral-900">
           <div className="flex-1 flex items-center px-4 bg-white dark:bg-neutral-950 rounded-lg border border-neutral-300 dark:border-neutral-800 focus-within:border-neutral-500 dark:focus-within:border-neutral-600 transition-colors">
@@ -265,7 +272,7 @@ export function GeneratorForm() {
             {isGenerating ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-neutral-100 dark:text-neutral-900" />
-                <span>Processing AST...</span>
+                <span>Processing...</span>
               </>
             ) : (
               <>
@@ -276,49 +283,61 @@ export function GeneratorForm() {
           </button>
         </div>
 
-        {/* Live Interactive Progress Stepper */}
+        {/* PROMINENT LIVE PROGRESS STEPPER CARD */}
         {isGenerating && (
-          <div className="w-full p-5 rounded-xl border border-neutral-300 dark:border-neutral-800 bg-neutral-100/90 dark:bg-neutral-900/90 text-left animate-in fade-in duration-300 shadow-md">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2 text-xs font-mono font-semibold text-neutral-900 dark:text-neutral-100">
-                <StageIcon className="w-4 h-4 text-neutral-700 dark:text-neutral-300 animate-pulse" />
-                <span>Stage {currentStage + 1} of 5: {activeStageObj.title}</span>
+          <div
+            ref={stepperRef}
+            className="w-full my-4 p-6 rounded-2xl border-2 border-neutral-400 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-left shadow-2xl animate-in fade-in slide-in-from-top-4 duration-300 ring-4 ring-neutral-200 dark:ring-neutral-800"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-neutral-900 dark:bg-neutral-100 text-neutral-100 dark:text-neutral-900 animate-bounce">
+                  <StageIcon className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold font-mono text-neutral-900 dark:text-neutral-100">
+                    Generating Engineering README...
+                  </h4>
+                  <p className="text-xs font-mono text-neutral-500 dark:text-neutral-400">
+                    {activeStageObj.title}
+                  </p>
+                </div>
               </div>
-              <span className="text-xs font-mono font-bold text-neutral-600 dark:text-neutral-400">
+              <span className="text-sm font-mono font-extrabold text-neutral-900 dark:text-neutral-100 bg-neutral-100 dark:bg-neutral-800 px-3 py-1 rounded-lg border border-neutral-300 dark:border-neutral-700">
                 {activeStageObj.progress}%
               </span>
             </div>
 
-            {/* Progress Bar */}
-            <div className="w-full bg-neutral-200 dark:bg-neutral-800 h-2 rounded-full overflow-hidden mb-4">
+            {/* Glowing Animated Progress Bar */}
+            <div className="w-full bg-neutral-200 dark:bg-neutral-800 h-3 rounded-full overflow-hidden mb-6 p-0.5 border border-neutral-300 dark:border-neutral-700">
               <div
-                className="bg-neutral-900 dark:bg-neutral-100 h-full transition-all duration-500 ease-out"
+                className="bg-neutral-900 dark:bg-neutral-100 h-full rounded-full transition-all duration-500 ease-out shadow-lg"
                 style={{ width: `${activeStageObj.progress}%` }}
               />
             </div>
 
-            {/* Stage Indicators */}
-            <div className="grid grid-cols-5 gap-1 pt-1">
+            {/* Stage Cards Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
               {STAGES.map((s) => {
                 const isCompleted = s.id < currentStage;
                 const isCurrent = s.id === currentStage;
                 return (
                   <div
                     key={s.id}
-                    className={`flex flex-col items-center p-2 rounded-lg border text-center transition-all ${
+                    className={`flex flex-col items-center p-3 rounded-xl border text-center transition-all ${
                       isCurrent
-                        ? "bg-white dark:bg-neutral-950 border-neutral-400 dark:border-neutral-600 text-neutral-900 dark:text-neutral-100"
+                        ? "bg-neutral-100 dark:bg-neutral-800 border-neutral-500 dark:border-neutral-400 text-neutral-900 dark:text-neutral-100 shadow-md font-bold"
                         : isCompleted
-                        ? "bg-neutral-200/60 dark:bg-neutral-800/60 border-neutral-300 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400"
-                        : "bg-transparent border-transparent text-neutral-400 opacity-50"
+                        ? "bg-neutral-200/50 dark:bg-neutral-950/60 border-neutral-300 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300"
+                        : "bg-transparent border-neutral-200 dark:border-neutral-800 text-neutral-400 opacity-40"
                     }`}
                   >
                     {isCompleted ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 mb-1" />
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 mb-1" />
                     ) : (
-                      <span className="text-[10px] font-mono font-bold mb-1">{s.id + 1}</span>
+                      <span className="text-xs font-mono font-bold mb-1">{s.id + 1}</span>
                     )}
-                    <span className="text-[9px] font-mono line-clamp-1">{s.title.split(" ")[0]}</span>
+                    <span className="text-[10px] font-mono leading-tight">{s.title.split(":")[1] || s.title}</span>
                   </div>
                 );
               })}
