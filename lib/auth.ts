@@ -33,5 +33,5 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/",
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: process.env.NEXTAUTH_SECRET || "readme_forge_super_secret_key_2026_dev_mode",
 };
