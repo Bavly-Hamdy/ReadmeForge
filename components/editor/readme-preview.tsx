@@ -34,9 +34,9 @@ export function ReadmePreview() {
   };
 
   return (
-    <div className="w-full max-w-5xl mx-auto mt-12 minimal-card rounded-2xl border border-neutral-300 dark:border-neutral-800 overflow-hidden shadow-md animate-in fade-in duration-300">
+    <div className="w-full max-w-5xl mx-auto mt-12 rounded-2xl border border-neutral-300 dark:border-neutral-800 overflow-hidden shadow-xl animate-in fade-in duration-300 bg-white dark:bg-neutral-950">
       {/* Top Header Bar */}
-      <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-100/90 dark:bg-neutral-900/90 flex flex-wrap items-center justify-between gap-4">
+      <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-neutral-200 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-300 border border-neutral-300 dark:border-neutral-700">
             <FileText className="w-4 h-4" />
@@ -106,8 +106,8 @@ export function ReadmePreview() {
         </div>
       </div>
 
-      {/* Main Content Pane - Light Mode High Contrast */}
-      <div className="p-6 sm:p-10 bg-white dark:bg-neutral-950/80 text-neutral-900 dark:text-neutral-100 overflow-x-auto min-h-[500px]">
+      {/* Main Content Pane - Pure White in Light Mode */}
+      <div className="p-6 sm:p-10 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 overflow-x-auto min-h-[500px]">
         {activeTab === "preview" ? (
           <div className="readme-markdown-rendered text-neutral-900 dark:text-neutral-200 text-left max-w-none space-y-4">
             <ReactMarkdown
@@ -124,16 +124,16 @@ export function ReadmePreview() {
                   <h3 className="text-base font-semibold text-neutral-800 dark:text-neutral-200 mb-3 mt-6" {...props} />
                 ),
                 p: ({ node, ...props }) => (
-                  <p className="text-xs sm:text-sm leading-relaxed text-neutral-700 dark:text-neutral-300 mb-4" {...props} />
+                  <p className="text-xs sm:text-sm leading-relaxed text-neutral-800 dark:text-neutral-300 mb-4" {...props} />
                 ),
                 ul: ({ node, ...props }) => (
-                  <ul className="list-disc list-inside space-y-1.5 text-xs sm:text-sm text-neutral-700 dark:text-neutral-300 mb-4 pl-2" {...props} />
+                  <ul className="list-disc list-inside space-y-1.5 text-xs sm:text-sm text-neutral-800 dark:text-neutral-300 mb-4 pl-2" {...props} />
                 ),
                 ol: ({ node, ...props }) => (
-                  <ol className="list-decimal list-inside space-y-1.5 text-xs sm:text-sm text-neutral-700 dark:text-neutral-300 mb-4 pl-2" {...props} />
+                  <ol className="list-decimal list-inside space-y-1.5 text-xs sm:text-sm text-neutral-800 dark:text-neutral-300 mb-4 pl-2" {...props} />
                 ),
                 li: ({ node, ...props }) => (
-                  <li className="text-xs sm:text-sm leading-relaxed text-neutral-700 dark:text-neutral-300" {...props} />
+                  <li className="text-xs sm:text-sm leading-relaxed text-neutral-800 dark:text-neutral-300" {...props} />
                 ),
                 a: ({ node, ...props }) => (
                   <a className="text-neutral-900 dark:text-neutral-100 hover:underline underline-offset-4 font-semibold transition-colors inline-flex items-center gap-1" target="_blank" rel="noreferrer" {...props} />
@@ -154,7 +154,7 @@ export function ReadmePreview() {
                   <th className="px-4 py-2.5 border-r border-neutral-200 dark:border-neutral-800/80 last:border-r-0 font-semibold" {...props} />
                 ),
                 td: ({ node, ...props }) => (
-                  <td className="px-4 py-2.5 border-b border-neutral-200 dark:border-neutral-800/60 border-r border-neutral-200 dark:border-neutral-800/60 last:border-r-0 text-neutral-700 dark:text-neutral-300 text-xs" {...props} />
+                  <td className="px-4 py-2.5 border-b border-neutral-200 dark:border-neutral-800/60 border-r border-neutral-200 dark:border-neutral-800/60 last:border-r-0 text-neutral-800 dark:text-neutral-300 text-xs" {...props} />
                 ),
                 blockquote: ({ node, ...props }) => (
                   <blockquote className="border-l-2 border-neutral-500 bg-neutral-100 dark:bg-neutral-900/60 p-4 my-4 rounded-r-lg text-xs italic text-neutral-800 dark:text-neutral-300 font-mono" {...props} />
@@ -171,7 +171,7 @@ export function ReadmePreview() {
 
                   if (isInline) {
                     return (
-                      <code className="bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-200 px-1.5 py-0.5 rounded text-xs font-mono border border-neutral-300 dark:border-neutral-800" {...props}>
+                      <code className="bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-200 px-1.5 py-0.5 rounded text-xs font-mono border border-neutral-200 dark:border-neutral-800" {...props}>
                         {children}
                       </code>
                     );
@@ -196,7 +196,7 @@ export function ReadmePreview() {
             </ReactMarkdown>
           </div>
         ) : (
-          <pre className="text-xs font-mono text-neutral-800 dark:text-neutral-300 bg-neutral-50 dark:bg-neutral-950 p-6 rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-x-auto whitespace-pre-wrap leading-relaxed select-all">
+          <pre className="text-xs font-mono text-neutral-900 dark:text-neutral-300 bg-neutral-50 dark:bg-neutral-950 p-6 rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-x-auto whitespace-pre-wrap leading-relaxed select-all">
             {generatedMarkdown}
           </pre>
         )}
