@@ -18,6 +18,8 @@ export async function POST(req: Request) {
       demoUrl,
       teamName,
       authorName,
+      copyrightYear,
+      licenseType,
       includeLicense = true,
       collaborators = [],
     } = body;
@@ -176,6 +178,10 @@ export async function POST(req: Request) {
       stage0
     );
 
+    // Automatically detect repo owner / author name if not provided
+    const licenseAuthor = authorName || teamName || session?.user?.name || owner;
+    const finalCopyrightYear = copyrightYear || new Date().getFullYear().toString();
+
     // Stage 4: Generation via Gemini 1.5 Pro with Extra Team & Architecture Params
     const markdown = await pipeline.runStage4({
       digest,
@@ -183,12 +189,13 @@ export async function POST(req: Request) {
       teamName,
       demoUrl,
       customTitle,
+      authorName: licenseAuthor,
+      copyrightYear: finalCopyrightYear,
       collaborators,
     });
 
     // Generate MIT License content if requested
-    const licenseAuthor = authorName || teamName || session?.user?.name || owner;
-    const licenseContent = includeLicense !== false ? generateMITLicense(licenseAuthor) : null;
+    const licenseContent = includeLicense !== false ? generateMITLicense(licenseAuthor, Number(finalCopyrightYear) || new Date().getFullYear()) : null;
 
     // 5. Store in Database
     try {

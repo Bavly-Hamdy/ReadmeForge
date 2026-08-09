@@ -39,6 +39,8 @@ export function GeneratorForm() {
     demoUrl,
     teamName,
     authorName,
+    copyrightYear,
+    licenseType,
     includeLicense,
     collaborators,
     isGenerating,
@@ -48,6 +50,8 @@ export function GeneratorForm() {
     setDemoUrl,
     setTeamName,
     setAuthorName,
+    setCopyrightYear,
+    setLicenseType,
     setIncludeLicense,
     addCollaborator,
     removeCollaborator,
@@ -57,6 +61,15 @@ export function GeneratorForm() {
     setDigest,
     setError,
   } = useReadmeStore();
+
+  // Auto-detect repo owner when repoUrl changes if authorName is empty
+  const handleRepoUrlChange = (url: string) => {
+    setRepoUrl(url);
+    const match = url.match(/github\.com\/([^/]+)\/([^/#?]+)/);
+    if (match && match[1] && !authorName) {
+      setAuthorName(match[1]);
+    }
+  };
 
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [collabName, setCollabName] = useState("");
@@ -438,35 +451,48 @@ export function GeneratorForm() {
                     >
                       <div className="flex items-center justify-center mb-1.5">
                         {isCompleted ? (
-                          <div className="p-1 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
-                            <Check className="w-3.5 h-3.5 stroke-[3]" />
-                          </div>
+                      <div className="flex items-center justify-between w-full">
+                        <span className="text-[10px] font-mono font-semibold opacity-70 uppercase tracking-wider">
+                          {s.title}
+                        </span>
+                        {isDone ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                        ) : isCurrent ? (
+                          <Loader2 className="w-3.5 h-3.5 text-indigo-500 animate-spin flex-shrink-0" />
                         ) : (
-                          <div className={`p-1 rounded-lg ${isCurrent ? "bg-neutral-900 dark:bg-neutral-100 text-neutral-100 dark:text-neutral-900" : "text-neutral-500"}`}>
-                            <StageItemIcon className="w-3.5 h-3.5" />
-                          </div>
+                          <Icon className="w-3.5 h-3.5 opacity-40 flex-shrink-0" />
                         )}
                       </div>
-                      <span className="text-[11px] font-mono font-semibold leading-tight">{s.subtitle}</span>
-                    </motion.div>
+                      <p className="text-[11px] font-mono font-medium leading-tight mt-1 line-clamp-2">
+                        {s.subtitle}
+                      </p>
+                    </div>
                   );
                 })}
+              </div>
+
+              {/* Interactive Smooth Progress Bar inside drawer */}
+              <div className="w-full bg-neutral-200 dark:bg-neutral-800 h-1.5 rounded-full overflow-hidden mt-3">
+                <div
+                  className="bg-gradient-to-r from-indigo-500 via-indigo-400 to-indigo-600 h-full transition-all duration-150 ease-out"
+                  style={{ width: `${progress}%` }}
+                />
               </div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* 3. Advanced Team & Metadata Accordion */}
-        <div className="w-full text-left minimal-card rounded-xl border border-neutral-300 dark:border-neutral-800 overflow-hidden bg-white/70 dark:bg-neutral-950/60">
+        {/* Metadata & Advanced Config Drawer */}
+        <div className="w-full mt-3 rounded-xl border border-neutral-300 dark:border-neutral-800 bg-neutral-100/80 dark:bg-neutral-900/80 overflow-hidden shadow-sm">
           <button
             type="button"
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className="w-full px-5 py-3 flex items-center justify-between text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200 bg-neutral-100/60 dark:bg-neutral-900/40 hover:bg-neutral-100 dark:hover:bg-neutral-900/80 transition-colors text-xs font-mono uppercase tracking-wider"
+            className="w-full px-4 py-2.5 flex items-center justify-between text-xs font-mono font-semibold text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
           >
-            <div className="flex items-center gap-2">
-              <Users className="w-4 h-4 text-neutral-500" />
-              <span>Team Members & Project Metadata ({collaborators.length} Members)</span>
-            </div>
+            <span className="flex items-center gap-2">
+              <Users className="w-3.5 h-3.5 text-neutral-500" />
+              <span>Advanced Options (Repository Title, Demo Link, License &amp; Team Members)</span>
+            </span>
             {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
 
@@ -506,27 +532,57 @@ export function GeneratorForm() {
                 </div>
               </div>
 
-              {/* License Generation Settings */}
-              <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                <label className="flex items-center gap-2 text-xs font-mono text-neutral-800 dark:text-neutral-200 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={includeLicense}
-                    onChange={(e) => setIncludeLicense(e.target.checked)}
-                    className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-900 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  <span className="font-semibold">Include LICENSE file (MIT)</span>
-                </label>
+              {/* High-Profile License Customization Card */}
+              <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-mono text-neutral-500 dark:text-neutral-400 uppercase tracking-wider flex items-center gap-2">
+                    <span>📜 License Customization &amp; Owner Settings</span>
+                  </h4>
+                  <label className="flex items-center gap-2 text-xs font-mono text-neutral-800 dark:text-neutral-200 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={includeLicense}
+                      onChange={(e) => setIncludeLicense(e.target.checked)}
+                      className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-900 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="font-semibold">Include LICENSE file</span>
+                  </label>
+                </div>
 
                 {includeLicense && (
-                  <div className="flex-1 w-full sm:w-auto">
-                    <input
-                      type="text"
-                      value={authorName}
-                      onChange={(e) => setAuthorName(e.target.value)}
-                      placeholder="Copyright Author Name (e.g. Bavly Hamdy)"
-                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 rounded-lg text-xs text-neutral-900 dark:text-neutral-200 focus:outline-none focus:border-neutral-500 font-mono"
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 rounded-xl bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-800">
+                    <div>
+                      <label className="block text-[11px] font-mono text-neutral-500 dark:text-neutral-400 mb-1">Copyright Holder / Author</label>
+                      <input
+                        type="text"
+                        value={authorName}
+                        onChange={(e) => setAuthorName(e.target.value)}
+                        placeholder="e.g. Bavly-Hamdy"
+                        className="w-full px-3 py-1.5 bg-white dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-lg text-xs text-neutral-900 dark:text-neutral-200 focus:outline-none font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-mono text-neutral-500 dark:text-neutral-400 mb-1">Copyright Year</label>
+                      <input
+                        type="text"
+                        value={copyrightYear}
+                        onChange={(e) => setCopyrightYear(e.target.value)}
+                        placeholder="2026"
+                        className="w-full px-3 py-1.5 bg-white dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-lg text-xs text-neutral-900 dark:text-neutral-200 focus:outline-none font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-mono text-neutral-500 dark:text-neutral-400 mb-1">License Type</label>
+                      <select
+                        value={licenseType}
+                        onChange={(e) => setLicenseType(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-white dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-lg text-xs text-neutral-900 dark:text-neutral-200 focus:outline-none font-mono"
+                      >
+                        <option value="MIT">MIT License (Standard Open Source)</option>
+                        <option value="Apache-2.0">Apache 2.0 License</option>
+                        <option value="GPL-3.0">GNU GPL v3.0</option>
+                      </select>
+                    </div>
                   </div>
                 )}
               </div>

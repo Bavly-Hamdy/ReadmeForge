@@ -60,6 +60,8 @@ export interface ReadmeGenerationParams {
   teamName?: string;
   demoUrl?: string;
   customTitle?: string;
+  authorName?: string;
+  copyrightYear?: string;
   collaborators?: CollaboratorInfo[];
 }
 

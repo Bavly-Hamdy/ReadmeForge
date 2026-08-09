@@ -9,6 +9,8 @@ interface ReadmeStore {
   demoUrl: string;
   teamName: string;
   authorName: string;
+  copyrightYear: string;
+  licenseType: string;
   includeLicense: boolean;
   collaborators: CollaboratorInfo[];
   isGenerating: boolean;
@@ -24,6 +26,8 @@ interface ReadmeStore {
   setDemoUrl: (url: string) => void;
   setTeamName: (team: string) => void;
   setAuthorName: (author: string) => void;
+  setCopyrightYear: (year: string) => void;
+  setLicenseType: (type: string) => void;
   setIncludeLicense: (include: boolean) => void;
   addCollaborator: (collab: CollaboratorInfo) => void;
   removeCollaborator: (index: number) => void;
@@ -43,6 +47,8 @@ export const useReadmeStore = create<ReadmeStore>((set) => ({
   demoUrl: "",
   teamName: "",
   authorName: "",
+  copyrightYear: new Date().getFullYear().toString(),
+  licenseType: "MIT",
   includeLicense: true,
   collaborators: [],
   isGenerating: false,
@@ -59,6 +65,8 @@ export const useReadmeStore = create<ReadmeStore>((set) => ({
   setDemoUrl: (demoUrl) => set({ demoUrl }),
   setTeamName: (teamName) => set({ teamName }),
   setAuthorName: (authorName) => set({ authorName }),
+  setCopyrightYear: (copyrightYear) => set({ copyrightYear }),
+  setLicenseType: (licenseType) => set({ licenseType }),
   setIncludeLicense: (includeLicense) => set({ includeLicense }),
   addCollaborator: (collab) =>
     set((state) => ({ collaborators: [...state.collaborators, collab] })),
@@ -80,6 +88,8 @@ export const useReadmeStore = create<ReadmeStore>((set) => ({
       demoUrl: "",
       teamName: "",
       authorName: "",
+      copyrightYear: new Date().getFullYear().toString(),
+      licenseType: "MIT",
       includeLicense: true,
       collaborators: [],
       isGenerating: false,
@@ -89,4 +99,5 @@ export const useReadmeStore = create<ReadmeStore>((set) => ({
       error: null,
     }),
 }));
+
 

@@ -58,8 +58,13 @@ export async function generateReadmeFromDigest(
     teamName,
     demoUrl,
     customTitle,
+    authorName,
+    copyrightYear,
     collaborators = [],
   } = params;
+
+  const effectiveAuthor = authorName || teamName || digest.repoName.split("/")[0] || "Repository Author";
+  const effectiveYear = copyrightYear || new Date().getFullYear().toString();
 
   // ── Pre-build explicit field extractions for surgical prompt injection ──────
   const repoTitle = customTitle || digest.repoName;
@@ -265,7 +270,22 @@ ${declaredScripts}
     • Contributor table featuring GitHub dynamic avatars or team roles.
 
 14. 📄 LICENSE
-    • Licensed under the **${licenseText}** License.
+    Output the complete pro-grade License section:
+    ## 📄 License
+    This project is licensed under the **${licenseText} License** — see the [LICENSE](./LICENSE) file for full details.
+
+    [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+
+    ### Summary of Rights & Permissions
+    | 🟢 Permissions | 🟡 Conditions | 🔴 Limitations |
+    | :--- | :--- | :--- |
+    | **Commercial use** | **License and copyright notice** | **Liability** |
+    | **Modification** | | **Warranty** |
+    | **Distribution** | | |
+    | **Private use** | | |
+
+    ---
+    > **Copyright (c) ${effectiveYear} ${effectiveAuthor}**
 
 ════════════════════════════════════════════════════════════════════
 OUTPUT FORMAT
