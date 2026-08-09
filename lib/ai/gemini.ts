@@ -297,7 +297,12 @@ Return ONLY valid GitHub-Flavored Markdown (GFM). Start directly with the # H1 h
 
 CRITICAL INSTRUCTIONS:
 1. Ban ALL robotic placeholders ("Implementation details not determinable", "N/A", etc.).
-2. Include Python/Node multi-ecosystem install & run commands (\`uv sync\`, \`pip install\`, \`python <script>.py\`).
+2. Include Python/Node multi-ecosystem install & run commands (uv sync, pip install, python <script>.py).
+3. Include ASCII progression flow diagram AND Mermaid flowchart.
+4. Include rich technical walkthroughs in Section 9 for EVERY module (${digest.modules.map((m) => m.name).slice(0, 5).join(", ")}).
+5. Convert Section 10 to a Script Execution Matrix if no HTTP API endpoints exist.
+6. Start directly with the # H1 heading.`;
+
   return await generateContentWithFallback(prompt, masterSystemPrompt);
 }
 
