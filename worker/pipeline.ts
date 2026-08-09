@@ -126,14 +126,14 @@ Return ONLY valid JSON matching this exact structure array:
     let manifestDesc: string | null = null;
     let manifestLicense: string | null = null;
 
-    // 1. Parse package.json if present
+    // 1. Parse Node package.json if present
     const pkgContent = stage0.manifests["package.json"] || stage0.manifests["/package.json"];
     if (pkgContent) {
       try {
         const pkg = JSON.parse(pkgContent);
-        parsedDeps = pkg.dependencies || {};
-        parsedDevDeps = pkg.devDependencies || {};
-        parsedScripts = pkg.scripts || {};
+        parsedDeps = { ...pkg.dependencies };
+        parsedDevDeps = { ...pkg.devDependencies };
+        parsedScripts = { ...pkg.scripts };
         if (pkg.description) manifestDesc = pkg.description;
         if (pkg.license) manifestLicense = pkg.license;
       } catch (e) {
@@ -141,7 +141,81 @@ Return ONLY valid JSON matching this exact structure array:
       }
     }
 
-    // 2. Extract detected API routes from treePaths
+    // 2. Parse Python manifests (requirements.txt, pyproject.toml, Pipfile)
+    for (const [mPath, mContent] of Object.entries(stage0.manifests)) {
+      const fileName = mPath.split("/").pop() || "";
+      if (fileName === "requirements.txt" && mContent) {
+        mContent.split("\n").forEach((line) => {
+          const trimmed = line.trim();
+          if (trimmed && !trimmed.startsWith("#") && !trimmed.startsWith("-")) {
+            const match = trimmed.match(/^([a-zA-Z0-9_\-\.]+)\s*([<>=~!].*)?$/);
+            if (match) {
+              parsedDeps[match[1]] = match[2]?.trim() || "latest";
+            }
+          }
+        });
+        if (!parsedScripts["install"]) parsedScripts["install"] = "pip install -r requirements.txt";
+      } else if (fileName === "pyproject.toml" && mContent) {
+        // Extract project dependencies array or poetry dependencies
+        const depMatches = mContent.match(/dependencies\s*=\s*\[([\s\S]*?)\]/);
+        if (depMatches && depMatches[1]) {
+          depMatches[1].split("\n").forEach((l) => {
+            const clean = l.replace(/["',]/g, "").trim();
+            if (clean && !clean.startsWith("#")) {
+              const name = clean.split(/[<>=~!]/)[0].trim();
+              if (name) parsedDeps[name] = "latest";
+            }
+          });
+        }
+        const isUv = stage0.treePaths.some((p) => p.endsWith("uv.lock"));
+        if (!parsedScripts["install"]) parsedScripts["install"] = isUv ? "uv sync" : "pip install .";
+        if (isUv && !parsedScripts["run"]) parsedScripts["run"] = "uv run python main.py";
+      } else if (fileName === "Cargo.toml" && mContent) {
+        const depSection = mContent.split("[dependencies]")[1]?.split("[")[0];
+        if (depSection) {
+          depSection.split("\n").forEach((l) => {
+            const parts = l.split("=");
+            if (parts.length >= 2) {
+              parsedDeps[parts[0].trim()] = parts[1].trim().replace(/["']/g, "");
+            }
+          });
+        }
+        if (!parsedScripts["build"]) parsedScripts["build"] = "cargo build --release";
+        if (!parsedScripts["run"]) parsedScripts["run"] = "cargo run";
+      } else if (fileName === "go.mod" && mContent) {
+        const reqMatches = mContent.match(/require\s*\(([\s\S]*?)\)/);
+        if (reqMatches && reqMatches[1]) {
+          reqMatches[1].split("\n").forEach((l) => {
+            const parts = l.trim().split(/\s+/);
+            if (parts.length >= 2 && !parts[0].startsWith("//")) {
+              parsedDeps[parts[0]] = parts[1];
+            }
+          });
+        }
+        if (!parsedScripts["build"]) parsedScripts["build"] = "go build -o app .";
+        if (!parsedScripts["run"]) parsedScripts["run"] = "go run .";
+      }
+    }
+
+    // 3. Parse .env.example / .env if present
+    const envVarsList: RepoDigest["envVars"] = [];
+    const envContent = stage0.manifests[".env.example"] || stage0.manifests["/ .env.example"] || stage0.manifests[".env.local"];
+    if (envContent) {
+      envContent.split("\n").forEach((line) => {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith("#") && trimmed.includes("=")) {
+          const [key, ...valParts] = trimmed.split("=");
+          const val = valParts.join("=").trim();
+          envVarsList.push({
+            name: key.trim(),
+            required: true,
+            description: val ? `Default: ${val}` : "Configured in environment",
+          });
+        }
+      });
+    }
+
+    // 4. Extract detected API routes from treePaths
     const apiRoutes = stage0.treePaths
       .filter((p) => /(app\/api\/|pages\/api\/|routes\/|controllers\/|api\/)/i.test(p))
       .map((p) => {
@@ -158,24 +232,34 @@ Return ONLY valid JSON matching this exact structure array:
         };
       });
 
-    // 3. Build accurate tech stack list from actual dependencies
+    // 5. Build accurate tech stack list from actual dependencies
     const allDepNames = [...Object.keys(parsedDeps), ...Object.keys(parsedDevDeps)];
+    const mainLang = stage0.ecosystems[0] || (stage0.treePaths.some((p) => p.endsWith(".py")) ? "Python" : "TypeScript");
+
     const frameworks = Array.from(
       new Set([
         ...stage0.ecosystems,
         ...allDepNames.filter((d) =>
-          ["next", "react", "tailwindcss", "express", "prisma", "@prisma/client", "fastapi", "django", "vue", "svelte", "typescript", "zustand"].includes(d)
+          [
+            "next", "react", "tailwindcss", "express", "prisma", "@prisma/client", "fastapi", "django",
+            "vue", "svelte", "typescript", "zustand", "streamlit", "groq", "openai", "minsearch",
+            "langchain", "llama-index", "pydantic", "flask", "actix-web", "gin", "fiber"
+          ].includes(d.toLowerCase())
         ),
       ])
+    );
+
+    const databases = allDepNames.filter((d) =>
+      ["prisma", "@prisma/client", "pg", "mysql2", "mongodb", "mongoose", "sqlite3", "psycopg2", "psycopg2-binary", "sqlalchemy", "redis"].includes(d.toLowerCase())
     );
 
     return {
       repoName,
       description: manifestDesc || description,
       techStack: {
-        language: stage0.ecosystems[0] || "TypeScript",
+        language: mainLang,
         frameworks,
-        databases: allDepNames.filter((d) => ["prisma", "@prisma/client", "pg", "mysql2", "mongodb", "mongoose", "sqlite3"].includes(d)),
+        databases,
       },
       packageManifest: {
         dependencies: parsedDeps,
@@ -183,7 +267,7 @@ Return ONLY valid JSON matching this exact structure array:
         scripts: parsedScripts,
       },
       modules: moduleSummaries,
-      envVars: [],
+      envVars: envVarsList,
       apiRoutes,
       collaborators: [],
       license: manifestLicense || "MIT",

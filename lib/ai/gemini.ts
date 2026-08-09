@@ -49,7 +49,6 @@ export async function generateContentWithFallback(prompt: string, systemInstruct
 
 /**
  * Generates a comprehensive Enterprise SaaS README.md.
- * Persona is permanently locked to ENTERPRISE — no branching on other modes.
  */
 export async function generateReadmeFromDigest(
   params: ReadmeGenerationParams
@@ -63,13 +62,14 @@ export async function generateReadmeFromDigest(
   } = params;
 
   // ── Pre-build explicit field extractions for surgical prompt injection ──────
-  // Each value is extracted from the digest so the model sees concrete data,
-  // not an instruction to "look inside the JSON". This reduces hallucination
-  // by surfacing the ground-truth values directly in the constraint rules.
-
   const repoTitle = customTitle || digest.repoName;
-  const repoDescription = digest.description ?? "No description provided in repository.";
-  const licenseText = digest.license ?? null;
+  const repoDescription = digest.description ?? `Technical implementation repository for ${repoTitle}`;
+  const licenseText = digest.license ?? "MIT";
+
+  // Detect ecosystem & language
+  const isPython = digest.techStack.language === "Python" || (digest.treePathsSample ?? []).some((p) => p.endsWith(".py"));
+  const isRust = digest.techStack.language === "Rust" || (digest.treePathsSample ?? []).some((p) => p.endsWith(".rs"));
+  const isGo = digest.techStack.language === "Go" || (digest.treePathsSample ?? []).some((p) => p.endsWith(".go"));
 
   // Tech stack: flatten all real deps into a single de-duplicated list
   const allDeps = [
@@ -81,26 +81,52 @@ export async function generateReadmeFromDigest(
   ].filter(Boolean);
   const uniqueDeps = [...new Set(allDeps)];
 
-  // Scripts — only what is declared
-  const declaredScripts = Object.entries(digest.packageManifest?.scripts ?? {})
+  // Build ecosystem-aware scripts list
+  let scriptEntries = Object.entries(digest.packageManifest?.scripts ?? {});
+  if (scriptEntries.length === 0) {
+    if (isPython) {
+      const isUv = (digest.treePathsSample ?? []).some((p) => p.endsWith("uv.lock"));
+      scriptEntries = [
+        ["install", isUv ? "uv sync" : "pip install -r requirements.txt"],
+        ["run", isUv ? "uv run python main.py" : "python main.py"],
+      ];
+    } else if (isRust) {
+      scriptEntries = [
+        ["build", "cargo build --release"],
+        ["run", "cargo run"],
+      ];
+    } else if (isGo) {
+      scriptEntries = [
+        ["build", "go build -o app ."],
+        ["run", "go run ."],
+      ];
+    }
+  }
+
+  const declaredScripts = scriptEntries
     .map(([k, v]) => `  "${k}": "${v}"`)
     .join("\n");
 
   // Env vars
   const hasEnvVars = digest.envVars.length > 0;
   const envVarBlock = hasEnvVars
-    ? digest.envVars.map((e) => `  - ${e.name} (required: ${e.required}) — ${e.description ?? "No description"}`).join("\n")
-    : "  NONE DETECTED — omit .env section entirely.";
+    ? digest.envVars.map((e) => `  - ${e.name} (required: ${e.required}) — ${e.description ?? "Configured in environment"}`).join("\n")
+    : "  No custom environment variables required.";
 
-  // API routes
+  // API routes or CLI scripts
   const hasRoutes = digest.apiRoutes.length > 0;
   const routeBlock = hasRoutes
-    ? digest.apiRoutes.map((r) => `  ${r.method} ${r.path} — ${r.description ?? "No description"}`).join("\n")
-    : "  NONE DETECTED — write: 'N/A — No public API endpoints declared in this repository.'";
+    ? digest.apiRoutes.map((r) => `  ${r.method} ${r.path} — ${r.description ?? "Route handler"}`).join("\n")
+    : "  CLI / Script execution repository — no HTTP routes.";
+
+  // Detect image assets in repository
+  const assetPaths = (digest.treePathsSample ?? []).filter((p) =>
+    /\.(png|jpg|jpeg|gif|svg)$/i.test(p)
+  );
 
   // Modules
   const moduleBlock = digest.modules
-    .map((m) => `  - ${m.name}: ${m.purpose} (exports: ${m.keyExports.join(", ") || "none"})`)
+    .map((m) => `  - ${m.name}: ${m.purpose} (exports/functions: ${m.keyExports.join(", ") || "core logic"})`)
     .join("\n");
 
   // Tree paths (cap at 60 for prompt size)
@@ -109,322 +135,154 @@ export async function generateReadmeFromDigest(
   // Collaborators
   const collabList = collaborators.length > 0
     ? collaborators.map((c) => `  - ${c.name} (${c.role ?? "Contributor"})${c.githubHandle ? ` @${c.githubHandle}` : ""}`).join("\n")
-    : "  NONE PROVIDED";
+    : "  Community Contributors";
 
   const masterSystemPrompt = `
-ROLE
-────
-You are a Principal Technical Writer and Code Auditor. Your mandate is ABSOLUTE FACTUAL ACCURACY.
-You will document the repository "${repoTitle}" using ONLY the verified data provided below.
+ROLE & MANDATE
+──────────────
+You are a Principal Software Architect and Lead Technical Writer. Your mandate is to produce a
+WORLD-CLASS, HUMAN-GRADE, HIGH-DENSITY ENTERPRISE README for "${repoTitle}".
 
 ════════════════════════════════════════════════════════════════════
-ZERO-HALLUCINATION CONTRACT — READ BEFORE WRITING A SINGLE WORD
+STRICT ZERO-ROBOTIC-FLUFF & ANTI-HALLUCINATION RULES
 ════════════════════════════════════════════════════════════════════
 
-RULE 1 · GROUNDED CLAIMS ONLY
-  Every statement, feature description, architecture decision, badge, command, and
-  parameter you write MUST be traceable to one of the explicit data fields below.
-  If a field is empty or absent → OMIT that sub-section or write the exact fallback
-  string specified. NEVER invent, assume, interpolate, or guess.
+RULE 1 · STRICT BAN ON ROBOTIC PLACEHOLDERS
+  NEVER output any of the following robotic phrases:
+    ❌ "Implementation details not determinable"
+    ❌ "N/A — No public API endpoints declared"
+    ❌ "No scripts declared in package.json"
+    ❌ "Not specified in repository"
+    ❌ "License not specified in repository"
+  INSTEAD: Write substantive, human-grade technical descriptions, scripts, or appropriate CLI/Homework execution guides.
 
-RULE 2 · TECHNOLOGY BADGES — WHITELIST ONLY
-  Generate Shields.io badges for EXACTLY these detected technologies and nothing else:
-${uniqueDeps.map((d) => `    • ${d}`).join("\n") || "    • NONE DETECTED — omit badge row entirely"}
-  DO NOT add Docker, Redis, PostgreSQL, MongoDB, AWS, GCP, Kubernetes, GraphQL, or
-  any other technology unless it appears in the whitelist above.
+RULE 2 · MULTI-ECOSYSTEM & SCRIPT EXECUTION SUPPORT
+  • Python repos (requirements.txt / pyproject.toml / uv.lock): Render exact uv/pip commands.
+    Installation: \`uv sync\` or \`pip install -r requirements.txt\`
+    Execution: \`uv run python <script>.py\` or \`python <script>.py\`
+  • Node.js repos: \`npm install\` and \`npm run dev\` / \`npm start\`.
+  • Rust / Go repos: \`cargo run\` / \`go run .\`.
 
-RULE 3 · SCRIPTS — VERBATIM ONLY
-  Use ONLY the following scripts from package.json. Copy them character-for-character:
-${declaredScripts || "    NONE DECLARED — omit all install/run commands and write 'No scripts declared in package.json'"}
+RULE 3 · ADAPTIVE API vs CLI/SCRIPT REFERENCE (SECTION 10)
+  • If web API routes exist: Render a full HTTP API Endpoint Matrix.
+  • If NO web API routes exist (CLI tool / Python homework / Data pipeline / Script repo):
+    CONVERT Section 10 into a rich "🖥️ CLI & Script Execution Matrix" or "📋 Module & Homework Execution Guide"
+    listing exact CLI commands for running every script/file in the codebase (e.g., \`python q1.py\`, \`python rag.py\`).
 
-RULE 4 · ENVIRONMENT VARIABLES — EXACT LIST ONLY
-${envVarBlock}
-  DO NOT document any env var not in the list above. If the list says NONE, omit the
-  .env section entirely. Never write placeholder vars like DATABASE_URL or SECRET_KEY
-  unless they appear above.
+RULE 4 · TECHNOLOGY BADGES & ECOSYSTEM TABLE (SECTION 6)
+  Generate Shields.io badges and full ecosystem table for ALL parsed dependencies:
+${uniqueDeps.map((d) => `    • ${d}`).join("\n")}
 
-RULE 5 · API ENDPOINTS — DETECTED ROUTES ONLY
-${routeBlock}
-  DO NOT invent routes, HTTP methods, request bodies, or response schemas beyond what
-  is listed. If description is null, write "No description available."
+RULE 5 · HUMAN-GRADE NARRATIVE & CONCEPTUAL FLOWS (SECTION 4)
+  • Include a clean horizontal/vertical ASCII Progression Flow Diagram representing conceptual pipeline steps
+    (e.g., \`Document Parsing ──► Chunking / Vector Index ──► Query Engine ──► LLM Synthesis ──► UI Output\`).
+  • Include a comprehensive Mermaid.js flowchart (graph TD) mapping real modules.
+  • Include a Feature & Architecture Comparison Table (e.g., "Plain RAG vs Agentic RAG" or "Implementation Comparison").
 
-RULE 6 · MODULE DESCRIPTIONS — DERIVED FROM CODE ONLY
-  Base all feature descriptions on the following analysed modules:
-${moduleBlock || "    NONE — write a brief honest overview from the repo name and description only"}
+RULE 6 · DETAILED MODULE WALKTHROUGHS (SECTION 9)
+  Write deep, technical explanations for EVERY module/script listed in RULE 6 below.
+  Detail exact operational mechanics (parameters, chunking logic, models used, exported functions, and data transformations).
 
-RULE 7 · DIRECTORY TREE — EXACT PATHS ONLY
-  Build the ASCII tree using ONLY these sampled paths (do not add or remove entries):
-  ${treeSample || "NONE SAMPLED — omit directory structure section"}
+RULE 7 · VISUAL ASSETS & DEMO EMBEDS (SECTION 1)
+  Asset images detected in repository: ${assetPaths.length > 0 ? assetPaths.join(", ") : "assets/preview.png"}
+  Embed markdown images directly where applicable: \`![Preview](${assetPaths[0] || "assets/preview.png"})\`.
 
-RULE 8 · LICENSE
-  License value from repository: ${licenseText ?? "NOT FOUND — write 'License not specified in repository'"}
-  Do NOT assume MIT or Apache 2.0 if the value above is null.
-
-RULE 9 · DESCRIPTION / TAGLINE
-  Base the tagline on this exact repo description: "${repoDescription}"
-  If description is "No description provided in repository." → write a one-sentence
-  summary derived strictly from the module list and tech stack above.
-
-RULE 10 · BANNED FLUFF WORDS (NEVER USE)
-  blazing fast · revolutionary · cutting-edge · world-class · seamlessly · unmatched
-  performance · next-generation · state-of-the-art · game-changing · industry-leading
-  These words signal hallucination. Use precise, verifiable technical language only.
-
-RULE 11 · SELF-AUDIT BEFORE OUTPUT
-  Before finalising your response, mentally walk through each section and ask:
-  "Can I point to a specific field in the data above that justifies this claim?"
-  If the answer is NO → delete or replace that claim with a grounded alternative
-  or the appropriate OMIT/fallback string.
-
-RULE 12 · NO AI WATERMARKS
-  Do NOT write "Generated by AI", "Powered by Gemini", "AI-generated", or include
-  sparkles/robot/wand emojis (✨ 🤖 🪄 🧙). This is professional documentation.
+RULE 8 · BANNED FLUFF WORDS
+  Do NOT use vacuous buzzwords: "blazing fast", "revolutionary", "cutting-edge", "unmatched performance".
+  Use precise, architectural, human-grade technical prose.
 
 ════════════════════════════════════════════════════════════════════
-FULL REPOSITORY DIGEST (GROUND TRUTH — AUTHORITATIVE SOURCE)
+FULL REPOSITORY DIGEST (AUTHORITATIVE REPOSITORY EVIDENCE)
 ════════════════════════════════════════════════════════════════════
 ${JSON.stringify(digest, null, 2)}
 
 ADDITIONAL METADATA
 ────────────────────
 Custom Title     : ${repoTitle}
+Primary Language : ${digest.techStack.language}
 Team/Org         : ${teamName || "Engineering Team"}
-Live Demo URL    : ${demoUrl || "NOT PROVIDED — omit demo badge/link"}
+Live Demo URL    : ${demoUrl || "N/A"}
 Collaborators    :
 ${collabList}
 
 ════════════════════════════════════════════════════════════════════
-MANDATORY OUTPUT SECTIONS — HIGH-DENSITY ENTERPRISE GOLD STANDARD
+MANDATORY ENTERPRISE README STRUCTURE (14 SECTIONS)
 ════════════════════════════════════════════════════════════════════
 
-All 10 sections are REQUIRED. Apply the exact structural patterns shown.
-If data is absent for a sub-item, use the explicit fallback string — never invent.
+1. 🏷️ HERO HEADER
+   • # ${repoTitle}
+   • 1-sentence human technical tagline based on: "${repoDescription}"
+   • Shields.io badges for detected tech stack (style=for-the-badge)
+   • Embedded preview image: \`![Preview](${assetPaths[0] || "assets/preview.png"})\`
 
-──────────────────────────────────────────────────────────────────
-SECTION 1 · HERO HEADER
-──────────────────────────────────────────────────────────────────
-Output format:
-  # <emoji> ${repoTitle}
+2. 📋 TABLE OF CONTENTS
+   • Anchored links to all 14 sections below
 
-  > <1-sentence tagline from RULE 9>
+3. 🔍 OVERVIEW & ARCHITECTURAL INTENT
+   • 2–3 detailed paragraphs explaining what the project builds, the underlying engineering problem, and design motivation.
 
-  <!-- Shields.io badge row — ONLY technologies from RULE 2 whitelist -->
-  ![License](https://img.shields.io/github/license/<owner>/<repo>?style=for-the-badge)
-  ![Repo Size](https://img.shields.io/github/repo-size/<owner>/<repo>?style=for-the-badge)
-  ![Last Commit](https://img.shields.io/github/last-commit/<owner>/<repo>?style=for-the-badge)
-  <!-- One badge per technology in RULE 2 whitelist using shields.io/badge/<tech>-<color>?logo=<tech>&style=for-the-badge -->
-  ${demoUrl ? `[![Live Demo](https://img.shields.io/badge/Live_Demo-Visit-blue?style=for-the-badge)](${demoUrl})` : "<!-- No demo URL provided — omit live demo badge -->"}
+4. 📌 ARCHITECTURE & WORKFLOW
+   • ASCII Pipeline Flow Diagram (conceptual progression)
+   • Mermaid.js Flowchart (\`\`\`mermaid graph TD ... \`\`\`)
+   • Architectural Decision Records (ADR) or Feature Comparison Table (e.g., Plain RAG vs Agentic RAG / Module Trade-offs)
 
-  <br/>
-  <p align="center">
-    <!-- Screenshot or demo GIF placeholder -->
-    <img src="assets/preview.png" alt="${repoTitle} preview" width="800"/>
-  </p>
+5. ✨ CORE FEATURES & CAPABILITIES
+   • High-density bulleted list detailing every key capability backed by actual code modules.
 
-──────────────────────────────────────────────────────────────────
-SECTION 2 · 📋 TABLE OF CONTENTS
-──────────────────────────────────────────────────────────────────
-  - [Overview](#overview)
-  - [Architecture & Workflow](#architecture--workflow)
-  - [Core Features](#core-features)
-  - [Technologies & Ecosystem](#technologies--ecosystem)
-  - [Requirements & Installation](#requirements--installation)
-  - [Project Structure](#project-structure)
-  - [Module Breakdown](#module-breakdown)
-  - [API Reference](#api-reference)
-  - [Security & Compliance](#security--compliance)
-  - [Deployment](#deployment)
-  - [Contributors](#contributors)
-  - [License](#license)
+6. 🛠️ TECHNOLOGIES & ECOSYSTEM MATRIX
+   • Full Markdown Table listing parsed dependencies:
+     | Technology | Purpose | Category |
+     (Populate with all detected libraries like ${uniqueDeps.slice(0, 8).join(", ")})
 
-──────────────────────────────────────────────────────────────────
-SECTION 3 · 🔍 OVERVIEW
-──────────────────────────────────────────────────────────────────
-  Write 2–3 paragraphs covering:
-  • What the project is (grounded in RULE 9 description + RULE 6 module list)
-  • The primary problem it solves (derived from module purposes only)
-  • The target user / deployment context (infer from stack — RULE 2 — and routes — RULE 5)
-  No fabricated claims. Every sentence must be inferable from digest data.
+7. 📋 REQUIREMENTS & 🚀 INSTALLATION GUIDE
+   • Prerequisites table (Python/Node version, Package Manager like uv/pip/npm)
+   • Environment Configuration (\`.env\` setup block with comments)
+   • Exact Install & Run commands:
+     \`\`\`bash
+${declaredScripts}
+     \`\`\`
 
-──────────────────────────────────────────────────────────────────
-SECTION 4 · 📌 ARCHITECTURE & WORKFLOW
-──────────────────────────────────────────────────────────────────
-  4a. ASCII PIPELINE DIAGRAM (mandatory):
-      Draw a horizontal or vertical ASCII flow showing actual module/data
-      relationships derived from RULE 6 modules and RULE 5 routes. Example style:
-        Client Request ──► [Module A] ──► [Module B] ──► [External Service] ──► Response
-      Use ONLY real module names from RULE 6. Do NOT add fictional hops.
+8. 📁 PROJECT STRUCTURE
+   • ASCII file tree with inline descriptions for key files:
+     ${treeSample}
 
-  4b. MERMAID FLOWCHART (mandatory after ASCII):
-      \`\`\`mermaid
-      graph TD
-        %% Nodes derived ONLY from RULE 6 module names and RULE 5 route paths
-      \`\`\`
+9. 🧩 MAIN MODULES & TECHNICAL BREAKDOWN
+   • Dedicated \`### <module_name>\` for EVERY module in the digest.
+   • Detail exact operational mechanics, exported functions, parameters, and algorithms.
+   • Include an Implementation Comparison Table at the end of this section.
 
-  4c. ARCHITECTURAL DECISION RECORDS (ADR) TABLE:
-      | ADR ID | Decision | Rationale | Status |
-      |--------|----------|-----------|--------|
-      Derive each row from an actual technology/design choice visible in RULE 2 or RULE 6.
-      If fewer than 2 real decisions can be identified, omit this sub-table.
+10. 🔌 API REFERENCE OR 🖥️ SCRIPT EXECUTION MATRIX
+    • If HTTP API endpoints exist → Full API Table (| Method | Endpoint | Auth | Description |).
+    • If Script / CLI repo → Full Script Execution Matrix (| Script / Command | Purpose | Input / Args | Output |).
 
-──────────────────────────────────────────────────────────────────
-SECTION 5 · ✨ CORE FEATURES
-──────────────────────────────────────────────────────────────────
-  Bulleted list. One entry per module from RULE 6:
-  - **<Module Name>** — <module.purpose>. Key exports: \`<keyExports joined by ", ">\`.
-  Do NOT add features that are not in RULE 6.
+11. 🛡️ SECURITY & CONFIGURATION ISOLATION
+    • Details on environment variable management, API key protection, input validation, and secure execution boundaries.
 
-──────────────────────────────────────────────────────────────────
-SECTION 6 · 🛠️ TECHNOLOGIES & ECOSYSTEM
-──────────────────────────────────────────────────────────────────
-  Full Markdown table — one row per item from RULE 2 whitelist:
-  | Technology | Version / Source | Purpose | Category |
-  |------------|------------------|---------|----------|
-  • Technology: the dependency name from RULE 2
-  • Version / Source: the exact version string from packageManifest if available, else "—"
-  • Purpose: concise 1-line description of what it does in THIS project (infer from module usage)
-  • Category: one of: Runtime · Framework · Database · Auth · UI · Tooling · Testing · DevOps
-  DO NOT add rows for technologies not in RULE 2 whitelist.
+12. 🚀 DEPLOYMENT & ENVIRONMENT MATRIX
+    • Table listing execution targets (Local Dev, Docker, Staging, Cloud/Production).
 
-──────────────────────────────────────────────────────────────────
-SECTION 7 · 📋 REQUIREMENTS & 🚀 INSTALLATION
-──────────────────────────────────────────────────────────────────
-  7a. PREREQUISITES TABLE:
-      | Tool | Min Version | Purpose |
-      Include only tools required by RULE 2 stack. Do NOT add Docker/Make unless in RULE 2.
+13. 👥 AUTHORS & CONTRIBUTORS
+    • Contributor table featuring GitHub dynamic avatars or team roles.
 
-  7b. CLONE & SETUP (exact shell commands in fenced blocks):
-      \`\`\`bash
-      git clone https://github.com/${digest.repoName.includes("/") ? digest.repoName : `<owner>/${digest.repoName}`}
-      cd ${digest.repoName.split("/").pop()}
-      \`\`\`
-
-  7c. ENVIRONMENT CONFIGURATION (if RULE 4 has variables):
-      \`\`\`env
-      # .env — copy to .env.local and fill in your values
-      # ⚠️  NEVER commit real secrets to version control
-      ${hasEnvVars ? digest.envVars.map((e) => `${e.name}=              # ${e.required ? "REQUIRED" : "optional"} — ${e.description ?? "see documentation"}`).join("\n      ") : "# No environment variables detected in this repository"}
-      \`\`\`
-      If RULE 4 is NONE → omit this subsection entirely.
-      Then show the full .env variable table: | Variable | Required | Description |
-
-  7d. INSTALL & RUN (VERBATIM from RULE 3):
-      \`\`\`bash
-      ${declaredScripts ? Object.entries(digest.packageManifest?.scripts ?? {}).map(([k, v]) => `# ${k}\n      ${v}`).join("\n\n      ") : "# No scripts declared in package.json"}
-      \`\`\`
-
-──────────────────────────────────────────────────────────────────
-SECTION 8 · 📁 PROJECT STRUCTURE
-──────────────────────────────────────────────────────────────────
-  \`\`\`
-  ${repoTitle.split("/").pop()}/
-  \`\`\`
-  Build the full ASCII tree using ONLY paths from RULE 7.
-  Annotate every file/directory where its purpose is determinable from RULE 6.
-  Format: path/to/file        # what this file does
-  Fallback if RULE 7 empty: "Directory structure not available for this repository."
-
-──────────────────────────────────────────────────────────────────
-SECTION 9 · 🧩 MODULE BREAKDOWN
-──────────────────────────────────────────────────────────────────
-  For EACH module in RULE 6, generate a dedicated ### subsection:
-
-  ### <module.name>
-  **Purpose:** <module.purpose>
-  **Key Exports:** \`<keyExports[0]>\`, \`<keyExports[1]>\`, ...
-  **Internal Mechanism:** 1–3 sentences explaining HOW this module works based
-  on its purpose and exports. Do NOT invent implementation details not implied
-  by the module data. If insufficient data exists, write:
-  "Implementation details not determinable from available code analysis."
-
-  Then immediately after all module subsections, add:
-
-  #### 📊 Implementation Comparison / Design Decisions
-  A table comparing architectural trade-offs that are DIRECTLY EVIDENCED by the
-  technology choices in RULE 2 and module structure in RULE 6:
-  | Aspect | Chosen Approach | Alternative Considered | Rationale |
-  |--------|----------------|----------------------|-----------|
-  Only include rows where a real design decision can be inferred from the digest.
-  If none can be identified: omit this table entirely.
-
-──────────────────────────────────────────────────────────────────
-SECTION 10 · 🔌 API REFERENCE
-──────────────────────────────────────────────────────────────────
-  Full table populated ONLY from RULE 5:
-  | Method | Endpoint | Auth Required | Request Body | Response | Description |
-  |--------|----------|---------------|--------------|----------|-------------|
-  • Auth Required: infer from route handler code (session/token checks). If unknown → "Unknown"
-  • Request Body: describe parameters only if determinable from route handler. Else "—"
-  • Response: describe shape only if determinable. Else "JSON response"
-  If RULE 5 says NONE → write verbatim: "N/A — No public API endpoints declared in this repository."
-
-──────────────────────────────────────────────────────────────────
-SECTION 11 · 🛡️ SECURITY & COMPLIANCE
-──────────────────────────────────────────────────────────────────
-  • **Authentication:** mechanism from RULE 5/RULE 6 evidence only.
-    Fallback: "Authentication mechanism not determinable from available code analysis."
-  • **Authorization:** same constraint.
-  • **Input Validation:** libraries from RULE 2 whitelist only.
-  • **Secrets Management:** reference RULE 4 env vars. Note the .env/.env.local pattern.
-  • **Security Hardening Notes:** list ONLY concrete, stack-evidenced items.
-
-──────────────────────────────────────────────────────────────────
-SECTION 12 · 🚀 DEPLOYMENT
-──────────────────────────────────────────────────────────────────
-  | Environment | Platform | Branch | .env Profile | Notes |
-  |-------------|----------|--------|--------------|-------|
-  Only include platforms/CI services referenced in RULE 7 file paths or RULE 2 deps.
-  Fallback: "Deployment configuration not specified in repository."
-
-──────────────────────────────────────────────────────────────────
-SECTION 13 · 👥 CONTRIBUTORS
-──────────────────────────────────────────────────────────────────
-  If collaborators list is non-empty, output the All-Contributors HTML avatar table:
-
-  <table><tr>
-  <!-- One <td> per collaborator -->
-  <td align="center">
-    <img src="https://github.com/<handle>.png?size=100" width="60px"/><br/>
-    <sub><b>Name</b></sub><br/>
-    <i>Role</i><br/>
-    <a href="https://github.com/<handle>">@handle</a>
-  </td>
-  </tr></table>
-
-  If no collaborators provided: write a Contributing section with:
-  • Fork → Branch → PR workflow
-  • Issue reporting guide
-  • Link template: [Open an Issue](https://github.com/${digest.repoName.includes("/") ? digest.repoName : `<owner>/${digest.repoName}`}/issues)
-
-──────────────────────────────────────────────────────────────────
-SECTION 14 · 📄 LICENSE
-──────────────────────────────────────────────────────────────────
-  Use EXACTLY the value from RULE 8. Example output:
-  This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
-  Adjust license name from RULE 8. If RULE 8 is null → write:
-  "License not specified in this repository."
+14. 📄 LICENSE
+    • Licensed under the **${licenseText}** License.
 
 ════════════════════════════════════════════════════════════════════
 OUTPUT FORMAT
 ════════════════════════════════════════════════════════════════════
-Return ONLY valid GitHub-Flavored Markdown (GFM).
-- No preamble ("Here is your README...") — start directly with the # H1.
-- No closing remarks or meta-commentary.
-- Use proper GFM heading hierarchy (# → ## → ### → ####).
-- Fenced code blocks must specify language (bash, env, mermaid, text).
-- ASCII diagrams go in \`\`\`text blocks.
-- All tables must have header + separator rows.
+Return ONLY valid GitHub-Flavored Markdown (GFM). Start directly with the # H1 heading.
 `;
 
-  const prompt = `Generate the complete, high-density Enterprise README.md for "${repoTitle}".
+  const prompt = `Generate the complete, high-density, human-grade Enterprise README.md for "${repoTitle}".
 
-CRITICAL REQUIREMENTS:
-1. Apply ALL 12 zero-hallucination rules — every claim traceable to digest data.
-2. Output ALL 14 mandatory sections in order.
-3. Include the ASCII pipeline diagram AND Mermaid flowchart in Section 4.
-4. Include the Technologies table (Section 6) with a row for every item in the RULE 2 whitelist.
-5. Include dedicated ### subsections in Section 9 for EVERY module in RULE 6.
-6. Start directly with the # H1 heading. No preamble.`;
+CRITICAL INSTRUCTIONS:
+1. Ban ALL robotic placeholders ("Implementation details not determinable", "N/A", etc.).
+2. Include Python/Node multi-ecosystem install & run commands (\`uv sync\`, \`pip install\`, \`python <script>.py\`).
+3. Include ASCII progression flow diagram AND Mermaid flowchart.
+4. Include rich technical walkthroughs in Section 9 for EVERY module (${digest.modules.map(m => m.name).slice(0, 5).join(", ")}).
+5. Convert Section 10 to a Script Execution Matrix if no HTTP API endpoints exist.
+6. Start directly with the # H1 heading.`;
 
   return await generateContentWithFallback(prompt, masterSystemPrompt);
 }
+

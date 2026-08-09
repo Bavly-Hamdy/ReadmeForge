@@ -108,8 +108,10 @@ export async function POST(req: Request) {
       }
     }
 
-    // 4. Fetch actual manifest file contents (package.json, requirements.txt, etc.)
-    const manifestFileNames = ["package.json", "requirements.txt", "pyproject.toml", "Cargo.toml", "go.mod", "pom.xml", ".env.example"];
+    const manifestFileNames = [
+      "package.json", "requirements.txt", "pyproject.toml", "Pipfile", "uv.lock",
+      "Cargo.toml", "go.mod", "pom.xml", "build.gradle", ".env.example", ".env.local"
+    ];
     const manifestPaths = treePaths.filter((path) => {
       const name = path.split("/").pop();
       return name && manifestFileNames.includes(name);
