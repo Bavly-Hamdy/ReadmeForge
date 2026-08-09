@@ -298,11 +298,60 @@ Return ONLY valid GitHub-Flavored Markdown (GFM). Start directly with the # H1 h
 CRITICAL INSTRUCTIONS:
 1. Ban ALL robotic placeholders ("Implementation details not determinable", "N/A", etc.).
 2. Include Python/Node multi-ecosystem install & run commands (\`uv sync\`, \`pip install\`, \`python <script>.py\`).
-3. Include ASCII progression flow diagram AND Mermaid flowchart.
-4. Include rich technical walkthroughs in Section 9 for EVERY module (${digest.modules.map(m => m.name).slice(0, 5).join(", ")}).
-5. Convert Section 10 to a Script Execution Matrix if no HTTP API endpoints exist.
-6. Start directly with the # H1 heading.`;
-
   return await generateContentWithFallback(prompt, masterSystemPrompt);
 }
+
+export interface GeneratedMetadataResult {
+  suggestedDescription: string;
+  suggestedTopics: string[];
+  releaseNotes: string;
+}
+
+/**
+ * Generates punchy repo description (<250 chars), GitHub topics tags, and v1.0.0 Release Notes via Gemini.
+ */
+export async function generateRepoMetadata(
+  digest: RepoDigest
+): Promise<GeneratedMetadataResult> {
+  const prompt = `Analyze this codebase digest for repository "${digest.repoName}":
+Description: ${digest.description || "N/A"}
+Tech Stack: Language: ${digest.techStack.language}, Frameworks: ${digest.techStack.frameworks.join(", ")}, Databases: ${digest.techStack.databases.join(", ")}
+Modules: ${digest.modules.map((m) => m.name).join(", ")}
+
+Generate a JSON object matching this EXACT structure:
+{
+  "suggestedDescription": "Punchy engineering description under 240 characters explaining what the repo does.",
+  "suggestedTopics": ["4 to 8 lowercase tags, e.g. nextjs, typescript, developer-tools"],
+  "releaseNotes": "Markdown formatted release notes for v1.0.0 Production Release highlighting main capabilities, setup, and features."
+}
+
+Return ONLY raw JSON, no markdown formatting ticks.`;
+
+  try {
+    const raw = await generateContentWithFallback(prompt);
+    const cleaned = raw.replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/\s*```$/, "").trim();
+    const parsed = JSON.parse(cleaned);
+    return {
+      suggestedDescription: parsed.suggestedDescription || `${digest.repoName} — High-performance technical implementation`,
+      suggestedTopics: Array.isArray(parsed.suggestedTopics) ? parsed.suggestedTopics : [digest.techStack.language.toLowerCase(), "developer-tools"],
+      releaseNotes: parsed.releaseNotes || `## 🚀 v1.0.0 Production Release\n\nInitial production release for **${digest.repoName}**.\n\n### Highlights\n- Complete codebase implementation in ${digest.techStack.language}.\n- Enterprise architecture and module structure.`,
+    };
+  } catch (err) {
+    console.warn("[Gemini AI] Metadata generation fallback used:", err);
+    // Fallback topics derived heuristically
+    const heuristicTopics = [
+      digest.techStack.language.toLowerCase(),
+      ...digest.techStack.frameworks.map((f) => f.toLowerCase()),
+      "developer-tools",
+      "open-source",
+    ].filter((t) => t && t.length < 30);
+
+    return {
+      suggestedDescription: digest.description || `Technical implementation repository for ${digest.repoName}`,
+      suggestedTopics: Array.from(new Set(heuristicTopics)).slice(0, 8),
+      releaseNotes: `## 🚀 v1.0.0 Production Release\n\nOfficial production release for **${digest.repoName}**.\n\n### Key Features\n- Complete AST-analyzed codebase architecture.\n- Production-ready documentation and automated setup.`,
+    };
+  }
+}
+
 

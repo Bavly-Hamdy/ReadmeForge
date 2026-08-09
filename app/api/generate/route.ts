@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { generateMITLicense } from "@/lib/license/mit";
+import { generateRepoMetadata } from "@/lib/ai/gemini";
 
 export const dynamic = "force-dynamic";
 
@@ -194,6 +195,9 @@ export async function POST(req: Request) {
       collaborators,
     });
 
+    // Generate AI-suggested Repo Metadata (Description, Topics, Release Notes)
+    const metadataRes = await generateRepoMetadata(digest);
+
     // Generate MIT License content if requested
     const licenseContent = includeLicense !== false ? generateMITLicense(licenseAuthor, Number(finalCopyrightYear) || new Date().getFullYear()) : null;
 
@@ -244,6 +248,9 @@ export async function POST(req: Request) {
       success: true,
       markdown,
       licenseContent,
+      suggestedDescription: metadataRes.suggestedDescription,
+      suggestedTopics: metadataRes.suggestedTopics,
+      releaseNotes: metadataRes.releaseNotes,
       digest,
       commitSha: treeResponse.sha,
     });

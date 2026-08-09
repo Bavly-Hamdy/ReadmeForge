@@ -16,6 +16,9 @@ interface ReadmeStore {
   isGenerating: boolean;
   generatedMarkdown: string | null;
   generatedLicense: string | null;
+  suggestedDescription: string;
+  suggestedTopics: string[];
+  releaseNotes: string;
   digest: RepoDigest | null;
   error: string | null;
 
@@ -34,6 +37,9 @@ interface ReadmeStore {
   setIsGenerating: (isGenerating: boolean) => void;
   setGeneratedMarkdown: (markdown: string | null) => void;
   setGeneratedLicense: (license: string | null) => void;
+  setSuggestedDescription: (desc: string) => void;
+  setSuggestedTopics: (topics: string[]) => void;
+  setReleaseNotes: (notes: string) => void;
   setDigest: (digest: RepoDigest | null) => void;
   setError: (error: string | null) => void;
   reset: () => void;
@@ -54,6 +60,9 @@ export const useReadmeStore = create<ReadmeStore>((set) => ({
   isGenerating: false,
   generatedMarkdown: null,
   generatedLicense: null,
+  suggestedDescription: "",
+  suggestedTopics: [],
+  releaseNotes: "",
   digest: null,
   error: null,
 
@@ -77,6 +86,9 @@ export const useReadmeStore = create<ReadmeStore>((set) => ({
   setIsGenerating: (isGenerating) => set({ isGenerating }),
   setGeneratedMarkdown: (generatedMarkdown) => set({ generatedMarkdown }),
   setGeneratedLicense: (generatedLicense) => set({ generatedLicense }),
+  setSuggestedDescription: (suggestedDescription) => set({ suggestedDescription }),
+  setSuggestedTopics: (suggestedTopics) => set({ suggestedTopics }),
+  setReleaseNotes: (releaseNotes) => set({ releaseNotes }),
   setDigest: (digest) => set({ digest }),
   setError: (error) => set({ error, isGenerating: false }),
   reset: () =>
@@ -95,9 +107,13 @@ export const useReadmeStore = create<ReadmeStore>((set) => ({
       isGenerating: false,
       generatedMarkdown: null,
       generatedLicense: null,
+      suggestedDescription: "",
+      suggestedTopics: [],
+      releaseNotes: "",
       digest: null,
       error: null,
     }),
 }));
+
 
 

@@ -8,6 +8,8 @@ import { motion } from "framer-motion";
 import { Check, Copy, Download, Code, Eye, FileText } from "lucide-react";
 import { useReadmeStore } from "@/lib/store/use-readme-store";
 import { MermaidDiagram } from "./mermaid-diagram";
+import { GithubSyncCard } from "@/components/dashboard/github-sync-card";
+
 
 export function ReadmePreview() {
   const { generatedMarkdown, generatedLicense, persona } = useReadmeStore();
@@ -277,7 +279,11 @@ export function ReadmePreview() {
           </div>
         )}
       </div>
+
+      {/* GitHub Auto-Sync & Release Panel */}
+      <GithubSyncCard />
     </motion.div>
   );
 }
+
 

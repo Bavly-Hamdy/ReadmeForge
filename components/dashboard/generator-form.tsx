@@ -58,6 +58,9 @@ export function GeneratorForm() {
     setIsGenerating,
     setGeneratedMarkdown,
     setGeneratedLicense,
+    setSuggestedDescription,
+    setSuggestedTopics,
+    setReleaseNotes,
     setDigest,
     setError,
   } = useReadmeStore();
@@ -239,9 +242,12 @@ export function GeneratorForm() {
         throw new Error(data.error || "Failed to generate README.");
       }
 
-      // Immediately set generated markdown and license in store so preview displays
+      // Immediately set generated markdown, license, and metadata in store
       setGeneratedMarkdown(data.markdown);
       setGeneratedLicense(data.licenseContent || null);
+      if (data.suggestedDescription) setSuggestedDescription(data.suggestedDescription);
+      if (data.suggestedTopics) setSuggestedTopics(data.suggestedTopics);
+      if (data.releaseNotes) setReleaseNotes(data.releaseNotes);
       setDigest(data.digest);
       setApiResult({ markdown: data.markdown, digest: data.digest });
       setIsFinished(true);
