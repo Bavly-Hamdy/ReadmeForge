@@ -5,6 +5,7 @@ import { AnalysisPipeline } from "@/worker/pipeline";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { generateMITLicense } from "@/lib/license/mit";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,8 @@ export async function POST(req: Request) {
       customTitle,
       demoUrl,
       teamName,
+      authorName,
+      includeLicense = true,
       collaborators = [],
     } = body;
 
@@ -183,6 +186,10 @@ export async function POST(req: Request) {
       collaborators,
     });
 
+    // Generate MIT License content if requested
+    const licenseAuthor = authorName || teamName || session?.user?.name || owner;
+    const licenseContent = includeLicense !== false ? generateMITLicense(licenseAuthor) : null;
+
     // 5. Store in Database
     try {
       let dbUser = null;
@@ -229,6 +236,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       markdown,
+      licenseContent,
       digest,
       commitSha: treeResponse.sha,
     });

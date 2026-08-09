@@ -8,9 +8,12 @@ interface ReadmeStore {
   customTitle: string;
   demoUrl: string;
   teamName: string;
+  authorName: string;
+  includeLicense: boolean;
   collaborators: CollaboratorInfo[];
   isGenerating: boolean;
   generatedMarkdown: string | null;
+  generatedLicense: string | null;
   digest: RepoDigest | null;
   error: string | null;
 
@@ -20,10 +23,13 @@ interface ReadmeStore {
   setCustomTitle: (title: string) => void;
   setDemoUrl: (url: string) => void;
   setTeamName: (team: string) => void;
+  setAuthorName: (author: string) => void;
+  setIncludeLicense: (include: boolean) => void;
   addCollaborator: (collab: CollaboratorInfo) => void;
   removeCollaborator: (index: number) => void;
   setIsGenerating: (isGenerating: boolean) => void;
   setGeneratedMarkdown: (markdown: string | null) => void;
+  setGeneratedLicense: (license: string | null) => void;
   setDigest: (digest: RepoDigest | null) => void;
   setError: (error: string | null) => void;
   reset: () => void;
@@ -36,9 +42,12 @@ export const useReadmeStore = create<ReadmeStore>((set) => ({
   customTitle: "",
   demoUrl: "",
   teamName: "",
+  authorName: "",
+  includeLicense: true,
   collaborators: [],
   isGenerating: false,
   generatedMarkdown: null,
+  generatedLicense: null,
   digest: null,
   error: null,
 
@@ -49,6 +58,8 @@ export const useReadmeStore = create<ReadmeStore>((set) => ({
   setCustomTitle: (customTitle) => set({ customTitle }),
   setDemoUrl: (demoUrl) => set({ demoUrl }),
   setTeamName: (teamName) => set({ teamName }),
+  setAuthorName: (authorName) => set({ authorName }),
+  setIncludeLicense: (includeLicense) => set({ includeLicense }),
   addCollaborator: (collab) =>
     set((state) => ({ collaborators: [...state.collaborators, collab] })),
   removeCollaborator: (index) =>
@@ -57,6 +68,7 @@ export const useReadmeStore = create<ReadmeStore>((set) => ({
     })),
   setIsGenerating: (isGenerating) => set({ isGenerating }),
   setGeneratedMarkdown: (generatedMarkdown) => set({ generatedMarkdown }),
+  setGeneratedLicense: (generatedLicense) => set({ generatedLicense }),
   setDigest: (digest) => set({ digest }),
   setError: (error) => set({ error, isGenerating: false }),
   reset: () =>
@@ -67,10 +79,14 @@ export const useReadmeStore = create<ReadmeStore>((set) => ({
       customTitle: "",
       demoUrl: "",
       teamName: "",
+      authorName: "",
+      includeLicense: true,
       collaborators: [],
       isGenerating: false,
       generatedMarkdown: null,
+      generatedLicense: null,
       digest: null,
       error: null,
     }),
 }));
+

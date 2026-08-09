@@ -38,6 +38,8 @@ export function GeneratorForm() {
     customTitle,
     demoUrl,
     teamName,
+    authorName,
+    includeLicense,
     collaborators,
     isGenerating,
     error,
@@ -45,10 +47,13 @@ export function GeneratorForm() {
     setCustomTitle,
     setDemoUrl,
     setTeamName,
+    setAuthorName,
+    setIncludeLicense,
     addCollaborator,
     removeCollaborator,
     setIsGenerating,
     setGeneratedMarkdown,
+    setGeneratedLicense,
     setDigest,
     setError,
   } = useReadmeStore();
@@ -208,6 +213,8 @@ export function GeneratorForm() {
           customTitle: customTitle.trim() || undefined,
           demoUrl: demoUrl.trim() || undefined,
           teamName: teamName.trim() || undefined,
+          authorName: authorName.trim() || undefined,
+          includeLicense,
           collaborators,
         }),
       });
@@ -219,8 +226,9 @@ export function GeneratorForm() {
         throw new Error(data.error || "Failed to generate README.");
       }
 
-      // Immediately set generated markdown in store so preview displays
+      // Immediately set generated markdown and license in store so preview displays
       setGeneratedMarkdown(data.markdown);
+      setGeneratedLicense(data.licenseContent || null);
       setDigest(data.digest);
       setApiResult({ markdown: data.markdown, digest: data.digest });
       setIsFinished(true);
@@ -464,7 +472,7 @@ export function GeneratorForm() {
 
           {showAdvanced && (
             <div className="p-5 space-y-5 border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950/80">
-              {/* Metadata Inputs */}
+              {/* Metadata & License Inputs */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-mono text-neutral-500 dark:text-neutral-400 mb-1.5">Custom Title</label>
@@ -496,6 +504,31 @@ export function GeneratorForm() {
                     className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 rounded-lg text-xs text-neutral-900 dark:text-neutral-200 focus:outline-none focus:border-neutral-500 font-mono"
                   />
                 </div>
+              </div>
+
+              {/* License Generation Settings */}
+              <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                <label className="flex items-center gap-2 text-xs font-mono text-neutral-800 dark:text-neutral-200 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={includeLicense}
+                    onChange={(e) => setIncludeLicense(e.target.checked)}
+                    className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-900 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="font-semibold">Include LICENSE file (MIT)</span>
+                </label>
+
+                {includeLicense && (
+                  <div className="flex-1 w-full sm:w-auto">
+                    <input
+                      type="text"
+                      value={authorName}
+                      onChange={(e) => setAuthorName(e.target.value)}
+                      placeholder="Copyright Author Name (e.g. Bavly Hamdy)"
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 rounded-lg text-xs text-neutral-900 dark:text-neutral-200 focus:outline-none focus:border-neutral-500 font-mono"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Add Team Member */}
