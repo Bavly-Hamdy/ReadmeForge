@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
+import { motion } from "framer-motion";
 import { Check, Copy, Download, Code, Eye, FileText } from "lucide-react";
 import { useReadmeStore } from "@/lib/store/use-readme-store";
 import { MermaidDiagram } from "./mermaid-diagram";
@@ -34,7 +35,13 @@ export function ReadmePreview() {
   };
 
   return (
-    <div className="w-full max-w-5xl mx-auto mt-12 rounded-2xl border border-neutral-300 dark:border-neutral-800 overflow-hidden shadow-xl animate-in fade-in duration-300 bg-white dark:bg-neutral-950">
+    <motion.div
+      id="readme-preview-section"
+      initial={{ opacity: 0, y: 40, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+      className="w-full max-w-5xl mx-auto mt-12 rounded-2xl border border-neutral-300 dark:border-neutral-800 overflow-hidden shadow-2xl bg-white dark:bg-neutral-950 scroll-mt-8"
+    >
       {/* Top Header Bar */}
       <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -201,6 +208,6 @@ export function ReadmePreview() {
           </pre>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }

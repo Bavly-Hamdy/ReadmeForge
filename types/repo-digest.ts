@@ -39,11 +39,17 @@ export interface RepoDigest {
   repoName: string;
   description: string | null;
   techStack: TechStack;
+  packageManifest?: {
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+    scripts?: Record<string, string>;
+  };
   modules: ModuleSummary[];
   envVars: EnvVariable[];
   apiRoutes: ApiRoute[];
   collaborators: CollaboratorInfo[];
   license: string | null;
+  treePathsSample?: string[];
   existingReadmeSummary: string | null;
 }
 

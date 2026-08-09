@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getOctokitClient } from "@/lib/github/octokit";
-import { fetchRepoTree } from "@/lib/github/tree";
+import { fetchRepoTree, fetchBlobContent, fetchBlobsThrottled, GitTreeItem } from "@/lib/github/tree";
 import { AnalysisPipeline } from "@/worker/pipeline";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
@@ -13,12 +13,14 @@ export async function POST(req: Request) {
     const body = await req.json();
     const {
       repoUrl,
-      persona = "PORTFOLIO",
       customTitle,
       demoUrl,
       teamName,
       collaborators = [],
     } = body;
+
+    // Persona is permanently locked to ENTERPRISE on the server
+    const persona = "ENTERPRISE" as const;
 
     if (!repoUrl || typeof repoUrl !== "string") {
       return NextResponse.json(
@@ -43,42 +45,131 @@ export async function POST(req: Request) {
     // 2. Obtain user session if logged in
     const session = await getServerSession(authOptions);
     const userAccessToken = session?.user?.accessToken;
+    const serverToken = process.env.GITHUB_TOKEN;
+    const effectiveToken = userAccessToken || serverToken;
 
-    const octokit = getOctokitClient(userAccessToken);
+    // Warn early if completely unauthenticated — 60 req/hr is exhausted easily
+    if (!effectiveToken) {
+      console.warn(
+        "[API Generate] No GitHub token available (no user session + no GITHUB_TOKEN env). " +
+          "Rate limit is 60 req/hr — generation will likely fail for anything beyond tiny repos."
+      );
+      return NextResponse.json(
+        {
+          error:
+            "GitHub API access is unauthenticated (60 req/hr limit). " +
+            "Please sign in with your GitHub account to generate READMEs. " +
+            "Alternatively, add a GITHUB_TOKEN to your .env file for server-side access.",
+        },
+        { status: 401 }
+      );
+    }
+
+    const octokit = getOctokitClient(effectiveToken);
 
     // 3. Single-Call Recursive Git Trees API
     let treeResponse;
+    let repoDescription: string | null = null;
     try {
       treeResponse = await fetchRepoTree(octokit, { owner, repo });
+      repoDescription = treeResponse.repoDescription;
     } catch (err: unknown) {
+      const status = (err as any)?.status ?? (err as any)?.response?.status;
+      const isRateLimit = status === 403 || status === 429;
       const message = err instanceof Error ? err.message : "Failed to fetch repository details from GitHub";
       console.error("[API Generate] GitHub tree error:", err);
+
+      if (isRateLimit) {
+        return NextResponse.json(
+          {
+            error:
+              "GitHub API rate limit exceeded. " +
+              (userAccessToken
+                ? "Please wait a moment and try again."
+                : "Sign in with your GitHub account to get a higher rate limit (5,000 req/hr vs 60 req/hr)."),
+          },
+          { status: 429 }
+        );
+      }
+
       return NextResponse.json(
-        { error: `Could not access repository '${fullName}'. Please check if the repo is public or if URL is correct. Details: ${message}` },
+        { error: `Could not access repository '${fullName}'. Please check if the repo is public or if the URL is correct. Details: ${message}` },
         { status: 404 }
       );
     }
 
     const treePaths = treeResponse.tree.map((t) => t.path).filter((p): p is string => Boolean(p));
 
-    // 4. Run Analysis Pipeline (Stages 0–4)
+    // Map tree items by path for SHA lookups (only blobs/files, not directories/trees)
+    const treeMap = new Map<string, GitTreeItem>();
+    for (const item of treeResponse.tree) {
+      if (item.path && item.type === "blob") {
+        treeMap.set(item.path, item);
+      }
+    }
+
+    // 4. Fetch actual manifest file contents (package.json, requirements.txt, etc.)
+    const manifestFileNames = ["package.json", "requirements.txt", "pyproject.toml", "Cargo.toml", "go.mod", "pom.xml", ".env.example"];
+    const manifestPaths = treePaths.filter((path) => {
+      const name = path.split("/").pop();
+      return name && manifestFileNames.includes(name);
+    });
+
+    const manifestContents: Record<string, string> = {};
+    // Use throttled blob fetching — sequential for unauthenticated users (60 req/hr),
+    // parallel for authenticated users with OAuth token (5,000 req/hr)
+    const manifestItems = manifestPaths
+      .map((p) => ({ path: p, sha: treeMap.get(p)?.sha ?? "" }))
+      .filter((x) => x.sha);
+
+    const fetchedManifests = await fetchBlobsThrottled(
+      octokit,
+      owner,
+      repo,
+      manifestItems,
+      Boolean(effectiveToken)
+    );
+    Object.assign(manifestContents, fetchedManifests);
+
+    // Run Analysis Pipeline (Stages 0–4)
     const pipeline = new AnalysisPipeline();
 
-    // Stage 0: Structural Extraction
-    const stage0 = await pipeline.runStage0(treePaths, {});
+    // Stage 0: Structural Extraction with Real Manifests
+    const stage0 = await pipeline.runStage0(treePaths, manifestContents);
 
     // Stage 1: Relevance Filtering
     const stage1 = await pipeline.runStage1(treePaths);
 
-    // Stage 2: Module Summaries
-    const topModules = stage1.prioritizedFiles.slice(0, 10).map((f) => ({
+    // Stage 2: Fetch actual code snippets for top prioritized files (throttle-aware)
+    const topPrioritized = stage1.prioritizedFiles.slice(0, 10);
+    const codeItems = topPrioritized
+      .map((f) => ({ path: f.path, sha: treeMap.get(f.path)?.sha ?? "" }))
+      .filter((x) => x.sha);
+
+    const fetchedCode = await fetchBlobsThrottled(
+      octokit,
+      owner,
+      repo,
+      codeItems,
+      Boolean(effectiveToken)
+    );
+
+    const topModules = topPrioritized.map((f) => ({
       moduleName: f.path,
-      files: [{ path: f.path, content: `// File ${f.path} in ${repo}` }],
+      files: [{ path: f.path, content: (fetchedCode[f.path] ?? `// File ${f.path}`).slice(0, 2500) }],
     }));
+
     const moduleSummaries = await pipeline.runStage2(topModules);
 
     // Stage 3: Reduce into RepoDigest
-    const digest = await pipeline.runStage3(repo, `${repo} software repository`, moduleSummaries, stage0);
+    // Pass the GitHub repo description from treeResponse metadata.
+    // Fallback to a descriptive string only when description is truly absent.
+    const digest = await pipeline.runStage3(
+      `${owner}/${repo}`,
+      repoDescription || null,
+      moduleSummaries,
+      stage0
+    );
 
     // Stage 4: Generation via Gemini 1.5 Pro with Extra Team & Architecture Params
     const markdown = await pipeline.runStage4({

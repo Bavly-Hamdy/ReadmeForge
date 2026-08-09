@@ -1,16 +1,12 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   GitBranch,
-  ArrowRight,
   Loader2,
   AlertCircle,
   Users,
-  Briefcase,
-  Globe,
-  Code2,
-  Building2,
   Plus,
   Trash2,
   ChevronDown,
@@ -21,68 +17,24 @@ import {
   BarChart3,
   Sparkles,
   CheckCircle2,
+  Timer,
+  Check,
 } from "lucide-react";
 import { useReadmeStore } from "@/lib/store/use-readme-store";
 
-const PERSONA_CARDS = [
-  {
-    id: "PORTFOLIO",
-    title: "Portfolio Showcase",
-    icon: Briefcase,
-    desc: "Built for personal projects & developer showcases",
-    highlights: [
-      "🏗️ Architectural Decision Records (ADR)",
-      "📱 Live Demo & Screenshots placeholders",
-      "🎯 Problem Statement & Impact metrics",
-    ],
-  },
-  {
-    id: "OPEN_SOURCE",
-    title: "Open Source Community",
-    icon: Globe,
-    desc: "Built for community repos & contributors",
-    highlights: [
-      "👥 All-Contributors avatar grid",
-      "🤝 Contributing & Code of Conduct guides",
-      "🏷️ Shields.io badges showcase",
-    ],
-  },
-  {
-    id: "MINIMALIST",
-    title: "Minimalist Light",
-    icon: Code2,
-    desc: "Ultra-fast, zero-fluff document",
-    highlights: [
-      "⚡ Under 60 lines of clean markdown",
-      "🚀 Prerequisites, Install & Run commands",
-      "📄 One-click License summary",
-    ],
-  },
-  {
-    id: "ENTERPRISE",
-    title: "Enterprise SaaS",
-    icon: Building2,
-    desc: "Built for corporate platforms & full API docs",
-    highlights: [
-      "🔌 Comprehensive API Endpoint Matrix",
-      "🛡️ Security & Compliance Policies",
-      "📊 Deployment & Environment Matrix",
-    ],
-  },
-];
+// Persona is permanently hardcoded to ENTERPRISE — no selector UI needed.
 
 const STAGES = [
-  { id: 0, title: "Stage 1/5: Extracting AST Manifests & Git Trees", icon: Search, progress: 20 },
-  { id: 1, title: "Stage 2/5: Filtering Entrypoints & API Routes", icon: Filter, progress: 40 },
-  { id: 2, title: "Stage 3/5: Summarizing Exported Interfaces", icon: Brain, progress: 65 },
-  { id: 3, title: "Stage 4/5: Constructing RepoDigest Topology", icon: BarChart3, progress: 85 },
-  { id: 4, title: "Stage 5/5: Synthesizing GFM & Mermaid SVG", icon: Sparkles, progress: 95 },
+  { id: 0, title: "Stage 1/5", subtitle: "Parsing AST & Git Trees", icon: Search, targetProgress: 22 },
+  { id: 1, title: "Stage 2/5", subtitle: "Filtering Routes & Entrypoints", icon: Filter, targetProgress: 45 },
+  { id: 2, title: "Stage 3/5", subtitle: "Summarizing Exported Interfaces", icon: Brain, targetProgress: 68 },
+  { id: 3, title: "Stage 4/5", subtitle: "Constructing Topology & ADR", icon: BarChart3, targetProgress: 86 },
+  { id: 4, title: "Stage 5/5", subtitle: "Synthesizing GFM & Mermaid SVG", icon: Sparkles, targetProgress: 98 },
 ];
 
 export function GeneratorForm() {
   const {
     repoUrl,
-    persona,
     customTitle,
     demoUrl,
     teamName,
@@ -90,7 +42,6 @@ export function GeneratorForm() {
     isGenerating,
     error,
     setRepoUrl,
-    setPersona,
     setCustomTitle,
     setDemoUrl,
     setTeamName,
@@ -106,28 +57,112 @@ export function GeneratorForm() {
   const [collabName, setCollabName] = useState("");
   const [collabRole, setCollabRole] = useState("");
   const [collabHandle, setCollabHandle] = useState("");
+  const [isAuthError, setIsAuthError] = useState(false);
+
+  const [progress, setProgress] = useState(0);
   const [currentStage, setCurrentStage] = useState(0);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [isFinished, setIsFinished] = useState(false);
+  const [apiResult, setApiResult] = useState<{ markdown: string; digest: any } | null>(null);
 
   const stepperRef = useRef<HTMLDivElement>(null);
 
-  // Cycle through progress stages while generating
+  // Refs so interval callbacks always read the latest values — no stale closures
+  const isFinishedRef = useRef(false);
+  const currentStageRef = useRef(0);
+  const progressRef = useRef(0);
+
+  // Single effect — fires only when isGenerating toggles. All intervals read
+  // live values through refs so there are ZERO stale-closure bugs.
   useEffect(() => {
     if (!isGenerating) {
+      // Reset everything when generation stops
+      setProgress(0);
       setCurrentStage(0);
+      setElapsedMs(0);
+      setIsFinished(false);
+      setApiResult(null);
+      isFinishedRef.current = false;
+      currentStageRef.current = 0;
+      progressRef.current = 0;
       return;
     }
 
-    // Scroll to stepper when generation starts
+    // Scroll progress card into view
     setTimeout(() => {
       stepperRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
+
+    // ── Timer: elapsed seconds display ──
+    const startTime = Date.now();
+    const timerInterval = setInterval(() => {
+      setElapsedMs(Date.now() - startTime);
     }, 100);
 
-    const interval = setInterval(() => {
-      setCurrentStage((prev) => (prev < STAGES.length - 1 ? prev + 1 : prev));
-    }, 1600);
+    // ── Progress tick: runs at 40 ms, reads refs for fresh values ──
+    const tickInterval = setInterval(() => {
+      if (isFinishedRef.current) {
+        // API returned — sprint to 100%
+        const next = progressRef.current + 4.5;
+        if (next >= 100) {
+          progressRef.current = 100;
+          setProgress(100);
+          clearInterval(tickInterval);
+          return;
+        }
+        progressRef.current = next;
+        setProgress(next);
+      } else {
+        // Creep toward the current stage's target
+        const target = STAGES[currentStageRef.current]?.targetProgress ?? 95;
+        const prev = progressRef.current;
+        if (prev < target) {
+          const next = prev + Math.max(0.3, (target - prev) * 0.1);
+          progressRef.current = next;
+          setProgress(next);
+        }
+      }
+    }, 40);
 
-    return () => clearInterval(interval);
-  }, [isGenerating]);
+    // ── Stage advance: every 2.2 s while API hasn't returned ──
+    const stageInterval = setInterval(() => {
+      if (!isFinishedRef.current) {
+        const next = Math.min(currentStageRef.current + 1, STAGES.length - 1);
+        currentStageRef.current = next;
+        setCurrentStage(next);
+      } else {
+        clearInterval(stageInterval);
+      }
+    }, 2200);
+
+    return () => {
+      clearInterval(timerInterval);
+      clearInterval(tickInterval);
+      clearInterval(stageInterval);
+    };
+  }, [isGenerating]); // ← only isGenerating — no stale restarts on every stage tick
+
+  // When the API result arrives, mark finished via ref so the tick interval picks it up
+  useEffect(() => {
+    if (isFinished && apiResult) {
+      isFinishedRef.current = true;
+      setCurrentStage(STAGES.length - 1);
+      // After fill reaches 100%, give a short pause then close the generating state
+      const timeout = setTimeout(() => {
+        setIsGenerating(false);
+
+        // Smooth scroll to README Preview
+        setTimeout(() => {
+          document.getElementById("readme-preview-section")?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        }, 100);
+      }, 800);
+
+      return () => clearTimeout(timeout);
+    }
+  }, [isFinished, apiResult, setIsGenerating]);
 
   const handleAddCollaborator = (e: React.FormEvent) => {
     e.preventDefault();
@@ -150,9 +185,18 @@ export function GeneratorForm() {
     }
 
     setIsGenerating(true);
+    setProgress(0);
     setCurrentStage(0);
+    setElapsedMs(0);
+    setIsFinished(false);
+    setApiResult(null);
     setError(null);
+    setIsAuthError(false);
     setGeneratedMarkdown(null);
+    // Keep refs in sync with state resets
+    isFinishedRef.current = false;
+    currentStageRef.current = 0;
+    progressRef.current = 0;
 
     try {
       const res = await fetch("/api/generate", {
@@ -160,7 +204,7 @@ export function GeneratorForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           repoUrl,
-          persona,
+          persona: "ENTERPRISE",
           customTitle: customTitle.trim() || undefined,
           demoUrl: demoUrl.trim() || undefined,
           teamName: teamName.trim() || undefined,
@@ -171,86 +215,54 @@ export function GeneratorForm() {
       const data = await res.json();
 
       if (!res.ok) {
+        if (res.status === 401) setIsAuthError(true);
         throw new Error(data.error || "Failed to generate README.");
       }
 
+      // Immediately set generated markdown in store so preview displays
       setGeneratedMarkdown(data.markdown);
       setDigest(data.digest);
+      setApiResult({ markdown: data.markdown, digest: data.digest });
+      setIsFinished(true);
+      setCurrentStage(STAGES.length - 1);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "An error occurred during generation.";
       setError(msg);
-    } finally {
       setIsGenerating(false);
     }
   };
 
   const activeStageObj = STAGES[currentStage];
   const StageIcon = activeStageObj.icon;
+  const roundedProgress = Math.min(100, Math.floor(progress));
+  const isComplete = isFinished && roundedProgress === 100;
+
+  // Derive status text from progress range — no extra state needed
+  const statusText =
+    roundedProgress >= 100
+      ? "README Ready! ✨"
+      : roundedProgress >= 80
+      ? "Formatting Markdown & Diagrams..."
+      : roundedProgress >= 50
+      ? "Running Gemini AI Summarization..."
+      : roundedProgress >= 25
+      ? "Parsing Dependencies & Stack..."
+      : "Fetching Repository Tree...";
 
   return (
     <div className="w-full max-w-4xl mx-auto flex flex-col items-center">
-      {/* 1. Minimalist Persona Selection Grid */}
-      <div className="w-full text-left mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xs font-mono uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-            Document Style & Target Persona
-          </h3>
-          <span className="text-xs text-neutral-500 font-mono">Select target mode</span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {PERSONA_CARDS.map((card) => {
-            const isSelected = persona === card.id;
-            const Icon = card.icon;
-            return (
-              <div
-                key={card.id}
-                onClick={() => setPersona(card.id)}
-                className={`p-5 rounded-xl border cursor-pointer transition-all duration-200 relative ${
-                  isSelected
-                    ? "bg-neutral-100 dark:bg-neutral-900 border-neutral-400 dark:border-neutral-600 text-neutral-900 dark:text-neutral-100 shadow-sm"
-                    : "bg-white/80 dark:bg-neutral-950/60 border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:border-neutral-400 dark:hover:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-900/50"
-                }`}
-              >
-                <div className="flex items-start gap-4">
-                  <div
-                    className={`p-2.5 rounded-lg border ${
-                      isSelected
-                        ? "bg-neutral-200 dark:bg-neutral-800 border-neutral-300 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
-                        : "bg-neutral-100 dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400"
-                    }`}
-                  >
-                    <Icon className="w-5 h-5" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                        {card.title}
-                      </h4>
-                      {isSelected && (
-                        <span className="w-2 h-2 rounded-full bg-neutral-900 dark:bg-neutral-100" />
-                      )}
-                    </div>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">
-                      {card.desc}
-                    </p>
-
-                    <ul className="mt-3 space-y-1">
-                      {card.highlights.map((h, i) => (
-                        <li key={i} className="text-[11px] text-neutral-600 dark:text-neutral-400 flex items-center gap-1.5 font-mono">
-                          <span>{h}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+      {/* Enterprise mode badge — persona is locked, no selector shown */}
+      <div className="w-full flex items-center gap-3 mb-6">
+        <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-[11px] font-mono font-semibold uppercase tracking-wider">
+          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+          Enterprise SaaS Mode
+        </span>
+        <span className="text-[11px] text-neutral-500 dark:text-neutral-500 font-mono">
+          Full API matrix · Mermaid architecture · Compliance &amp; deployment docs
+        </span>
       </div>
 
-      {/* 2. Main Repo URL Form */}
+      {/* Main Repo URL Form */}
       <form onSubmit={handleSubmit} className="w-full flex flex-col gap-4">
         <div className="w-full minimal-card p-2 rounded-xl flex flex-col sm:flex-row gap-2 border border-neutral-300 dark:border-neutral-800 shadow-sm bg-neutral-100 dark:bg-neutral-900">
           <div className="flex-1 flex items-center px-4 bg-white dark:bg-neutral-950 rounded-lg border border-neutral-300 dark:border-neutral-800 focus-within:border-neutral-500 dark:focus-within:border-neutral-600 transition-colors">
@@ -264,86 +276,177 @@ export function GeneratorForm() {
               className="w-full py-3 text-xs font-mono text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-600 bg-transparent focus:outline-none disabled:opacity-50"
             />
           </div>
+          {/* ── FORGE BUTTON: ENTERPRISE PROGRESS-FILL ── */}
           <button
             type="submit"
             disabled={isGenerating}
-            className="px-6 py-3 bg-neutral-900 dark:bg-neutral-100 hover:bg-neutral-800 dark:hover:bg-white text-neutral-100 dark:text-neutral-900 font-semibold text-xs rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm min-w-[180px]"
+            role={isGenerating ? "progressbar" : undefined}
+            aria-valuenow={isGenerating ? roundedProgress : undefined}
+            aria-valuemin={isGenerating ? 0 : undefined}
+            aria-valuemax={isGenerating ? 100 : undefined}
+            aria-label={isGenerating ? `Generating README — ${roundedProgress}%` : "Forge Enterprise README"}
+            className="relative overflow-hidden rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 px-6 py-3 font-semibold text-white text-sm shadow-lg transition-all duration-300 disabled:cursor-not-allowed min-w-[220px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2"
           >
-            {isGenerating ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-neutral-100 dark:text-neutral-900" />
-                <span>Processing...</span>
-              </>
-            ) : (
-              <>
-                <span>Forge README</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </>
+            {/* Animated progress fill overlay */}
+            {isGenerating && (
+              <span
+                aria-hidden="true"
+                className={`absolute inset-y-0 left-0 transition-all duration-200 ease-out ${
+                  isComplete ? "bg-emerald-500/40" : "bg-indigo-500/50"
+                }`}
+                style={{ width: `${roundedProgress}%` }}
+              >
+                {/* Shimmer sweep */}
+                {!isComplete && (
+                  <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse" />
+                )}
+              </span>
             )}
+
+            {/* Button inner content */}
+            <span className="relative z-10 flex items-center justify-between w-full">
+              {isGenerating ? (
+                isComplete ? (
+                  /* STATE 3 — Complete */
+                  <span className="flex items-center justify-center gap-2 w-full">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-300 flex-shrink-0" />
+                    <span>README Generated!</span>
+                  </span>
+                ) : (
+                  /* STATE 2 — In-progress */
+                  <>
+                    <span className="flex items-center gap-2 min-w-0">
+                      <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
+                      <span
+                        aria-live="polite"
+                        className="text-sm font-medium truncate max-w-[130px] sm:max-w-[180px]"
+                      >
+                        {statusText}
+                      </span>
+                    </span>
+                    <span className="font-mono text-xs font-bold tabular-nums flex-shrink-0">
+                      {roundedProgress}%
+                    </span>
+                  </>
+                )
+              ) : (
+                /* STATE 1 — Idle */
+                <span className="flex items-center justify-center gap-2 w-full">
+                  <Sparkles className="h-4 w-4" />
+                  <span>Forge Enterprise README</span>
+                </span>
+              )}
+            </span>
           </button>
         </div>
 
-        {/* PROMINENT LIVE PROGRESS STEPPER CARD */}
-        {isGenerating && (
-          <div
-            ref={stepperRef}
-            className="w-full my-4 p-6 rounded-2xl border-2 border-neutral-400 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-left shadow-2xl animate-in fade-in slide-in-from-top-4 duration-300 ring-4 ring-neutral-200 dark:ring-neutral-800"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-neutral-900 dark:bg-neutral-100 text-neutral-100 dark:text-neutral-900 animate-bounce">
-                  <StageIcon className="w-5 h-5" />
+        {/* PROMINENT LIVE ANIMATED PROGRESS CARD WITH PERCENTAGE */}
+        <AnimatePresence>
+          {isGenerating && (
+            <motion.div
+              ref={stepperRef}
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, scale: 0.95 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+              className="w-full my-4 p-6 sm:p-8 rounded-3xl border-2 border-neutral-300 dark:border-neutral-700 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl text-left shadow-2xl relative overflow-hidden ring-4 ring-neutral-200/50 dark:ring-neutral-800/50"
+            >
+              {/* Background Ambient Glow Ring */}
+              <div className="absolute -right-16 -top-16 w-48 h-48 rounded-full bg-gradient-to-br from-neutral-200/40 via-neutral-300/20 to-transparent dark:from-neutral-800/40 dark:via-neutral-700/20 blur-2xl pointer-events-none" />
+
+              {/* Header Info Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-4 mb-6 relative z-10">
+                <div className="flex items-center gap-4">
+                  <div className="relative p-3 rounded-2xl bg-neutral-900 dark:bg-neutral-100 text-neutral-100 dark:text-neutral-900 shadow-md">
+                    <StageIcon className="w-6 h-6 animate-pulse" />
+                    <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                    </span>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-base font-extrabold font-mono text-neutral-900 dark:text-neutral-100">
+                        {roundedProgress === 100 ? "README Forged Successfully!" : "Forging Engineering README..."}
+                      </h4>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-300 dark:border-neutral-700">
+                        {activeStageObj.title}
+                      </span>
+                    </div>
+                    <p className="text-xs font-mono text-neutral-500 dark:text-neutral-400 mt-1">
+                      {activeStageObj.subtitle}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-sm font-bold font-mono text-neutral-900 dark:text-neutral-100">
-                    Generating Engineering README...
-                  </h4>
-                  <p className="text-xs font-mono text-neutral-500 dark:text-neutral-400">
-                    {activeStageObj.title}
-                  </p>
+
+                {/* Percentage Ticker & Timer Badge */}
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-300 dark:border-neutral-700 text-xs font-mono text-neutral-600 dark:text-neutral-400">
+                    <Timer className="w-3.5 h-3.5 text-neutral-500" />
+                    <span>{(elapsedMs / 1000).toFixed(1)}s</span>
+                  </div>
+
+                  <div className="px-4 py-2 rounded-2xl bg-neutral-900 dark:bg-neutral-100 text-neutral-100 dark:text-neutral-900 shadow-lg border border-neutral-700 dark:border-neutral-300 flex items-center gap-1.5">
+                    <span className="text-xl sm:text-2xl font-black font-mono tracking-tight">
+                      {roundedProgress}%
+                    </span>
+                  </div>
                 </div>
               </div>
-              <span className="text-sm font-mono font-extrabold text-neutral-900 dark:text-neutral-100 bg-neutral-100 dark:bg-neutral-800 px-3 py-1 rounded-lg border border-neutral-300 dark:border-neutral-700">
-                {activeStageObj.progress}%
-              </span>
-            </div>
 
-            {/* Glowing Animated Progress Bar */}
-            <div className="w-full bg-neutral-200 dark:bg-neutral-800 h-3 rounded-full overflow-hidden mb-6 p-0.5 border border-neutral-300 dark:border-neutral-700">
-              <div
-                className="bg-neutral-900 dark:bg-neutral-100 h-full rounded-full transition-all duration-500 ease-out shadow-lg"
-                style={{ width: `${activeStageObj.progress}%` }}
-              />
-            </div>
+              {/* Glowing High-Precision Animated Progress Bar */}
+              <div className="w-full bg-neutral-200 dark:bg-neutral-800 h-4 rounded-full overflow-hidden mb-6 p-0.5 border border-neutral-300 dark:border-neutral-700 relative shadow-inner">
+                <motion.div
+                  className="bg-gradient-to-r from-neutral-800 via-neutral-900 to-black dark:from-neutral-300 dark:via-neutral-100 dark:to-white h-full rounded-full transition-all duration-300 ease-out shadow-md relative"
+                  style={{ width: `${roundedProgress}%` }}
+                >
+                  {/* Shimmer Line Overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 dark:via-black/20 to-transparent animate-pulse" />
+                </motion.div>
+              </div>
 
-            {/* Stage Cards Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
-              {STAGES.map((s) => {
-                const isCompleted = s.id < currentStage;
-                const isCurrent = s.id === currentStage;
-                return (
-                  <div
-                    key={s.id}
-                    className={`flex flex-col items-center p-3 rounded-xl border text-center transition-all ${
-                      isCurrent
-                        ? "bg-neutral-100 dark:bg-neutral-800 border-neutral-500 dark:border-neutral-400 text-neutral-900 dark:text-neutral-100 shadow-md font-bold"
-                        : isCompleted
-                        ? "bg-neutral-200/50 dark:bg-neutral-950/60 border-neutral-300 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300"
-                        : "bg-transparent border-neutral-200 dark:border-neutral-800 text-neutral-400 opacity-40"
-                    }`}
-                  >
-                    {isCompleted ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 mb-1" />
-                    ) : (
-                      <span className="text-xs font-mono font-bold mb-1">{s.id + 1}</span>
-                    )}
-                    <span className="text-[10px] font-mono leading-tight">{s.title.split(":")[1] || s.title}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+              {/* Stage Stepper Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5 relative z-10">
+                {STAGES.map((s) => {
+                  const isCompleted = s.id < currentStage || roundedProgress === 100;
+                  const isCurrent = s.id === currentStage && roundedProgress < 100;
+                  const StageItemIcon = s.icon;
+                  return (
+                    <motion.div
+                      key={s.id}
+                      initial={false}
+                      animate={{
+                        scale: isCurrent ? 1.03 : 1,
+                        opacity: isCurrent || isCompleted ? 1 : 0.5,
+                      }}
+                      className={`flex flex-col items-center p-3 rounded-2xl border text-center transition-all ${
+                        isCurrent
+                          ? "bg-neutral-100 dark:bg-neutral-800 border-neutral-600 dark:border-neutral-400 text-neutral-900 dark:text-neutral-100 shadow-md font-bold ring-2 ring-neutral-400/50 dark:ring-neutral-600/50"
+                          : isCompleted
+                          ? "bg-neutral-200/60 dark:bg-neutral-950/80 border-emerald-500/40 text-neutral-800 dark:text-neutral-200"
+                          : "bg-transparent border-neutral-200 dark:border-neutral-800 text-neutral-400"
+                      }`}
+                    >
+                      <div className="flex items-center justify-center mb-1.5">
+                        {isCompleted ? (
+                          <div className="p-1 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          </div>
+                        ) : (
+                          <div className={`p-1 rounded-lg ${isCurrent ? "bg-neutral-900 dark:bg-neutral-100 text-neutral-100 dark:text-neutral-900" : "text-neutral-500"}`}>
+                            <StageItemIcon className="w-3.5 h-3.5" />
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-[11px] font-mono font-semibold leading-tight">{s.subtitle}</span>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* 3. Advanced Team & Metadata Accordion */}
         <div className="w-full text-left minimal-card rounded-xl border border-neutral-300 dark:border-neutral-800 overflow-hidden bg-white/70 dark:bg-neutral-950/60">
@@ -467,9 +570,22 @@ export function GeneratorForm() {
 
       {/* Error Alert */}
       {error && (
-        <div className="mt-4 w-full p-4 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 text-xs font-mono flex items-center gap-3">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span>{error}</span>
+        <div className="mt-4 w-full p-4 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 text-xs font-mono flex flex-col gap-3">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <span className="leading-relaxed">{error}</span>
+          </div>
+          {isAuthError && (
+            <a
+              href="/api/auth/signin"
+              className="self-start inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 text-xs font-semibold hover:opacity-90 transition-opacity"
+            >
+              <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current" aria-hidden="true">
+                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
+              </svg>
+              Sign in with GitHub
+            </a>
+          )}
         </div>
       )}
     </div>
