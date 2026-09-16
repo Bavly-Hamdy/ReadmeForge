@@ -48,7 +48,7 @@ export class AnalysisPipeline {
    * Stage 1 — Relevance Filtering (no LLM heuristic)
    */
   public async runStage1(treePaths: string[]): Promise<Stage1Result> {
-    const excludeRegex = /(node_modules|vendor|dist|build|\.next|\.git|lock|\.png|\.jpg|\.jpeg|\.svg|\.ico|\.zip|\.tar|\.gz)$/i;
+    const excludeRegex = /(^|\/)(node_modules|vendor|dist|build|\.next|\.git)($|\/)|\.(lock|png|jpg|jpeg|svg|ico|zip|tar|gz)$/i;
 
     const filteredPaths = treePaths.filter((path) => !excludeRegex.test(path));
 
@@ -56,10 +56,10 @@ export class AnalysisPipeline {
 
     for (const path of filteredPaths) {
       const lower = path.toLowerCase();
-      if (lower.includes("main") || lower.includes("index") || lower.startsWith("app/") || lower.startsWith("src/")) {
-        prioritizedFiles.push({ path, category: "entry" });
-      } else if (lower.includes("route") || lower.includes("api") || lower.includes("controller")) {
+      if (lower.includes("route") || lower.includes("api") || lower.includes("controller")) {
         prioritizedFiles.push({ path, category: "route" });
+      } else if (lower.includes("main") || lower.includes("index") || lower.startsWith("app/") || lower.startsWith("src/")) {
+        prioritizedFiles.push({ path, category: "entry" });
       } else if (lower.includes("config") || lower.endsWith(".json") || lower.endsWith(".toml") || lower.endsWith(".yaml")) {
         prioritizedFiles.push({ path, category: "config" });
       } else if (lower.includes("readme") || lower.includes("doc")) {
@@ -234,18 +234,46 @@ Return ONLY valid JSON matching this exact structure array:
 
     // 5. Build accurate tech stack list from actual dependencies
     const allDepNames = [...Object.keys(parsedDeps), ...Object.keys(parsedDevDeps)];
-    const mainLang = stage0.ecosystems[0] || (stage0.treePaths.some((p) => p.endsWith(".py")) ? "Python" : "TypeScript");
+    const ECOSYSTEM_LANG_MAP: Record<string, string> = {
+      "npm/node": "TypeScript / JavaScript",
+      "python": "Python",
+      "rust": "Rust",
+      "golang": "Go",
+      "java/maven": "Java",
+      "java/gradle": "Java",
+    };
+    const mainLang =
+      (stage0.ecosystems[0] && ECOSYSTEM_LANG_MAP[stage0.ecosystems[0]]) ||
+      stage0.ecosystems[0] ||
+      (stage0.treePaths.some((p) => p.endsWith(".py")) ? "Python" : "TypeScript");
+
+    const FRAMEWORK_DISPLAY_MAP: Record<string, string> = {
+      next: "Next.js",
+      react: "React",
+      tailwindcss: "Tailwind CSS",
+      fastapi: "FastAPI",
+      django: "Django",
+      flask: "Flask",
+      prisma: "Prisma",
+      express: "Express.js",
+      vue: "Vue.js",
+      svelte: "Svelte",
+      zustand: "Zustand",
+      pydantic: "Pydantic",
+    };
 
     const frameworks = Array.from(
       new Set([
         ...stage0.ecosystems,
-        ...allDepNames.filter((d) =>
-          [
-            "next", "react", "tailwindcss", "express", "prisma", "@prisma/client", "fastapi", "django",
-            "vue", "svelte", "typescript", "zustand", "streamlit", "groq", "openai", "minsearch",
-            "langchain", "llama-index", "pydantic", "flask", "actix-web", "gin", "fiber"
-          ].includes(d.toLowerCase())
-        ),
+        ...allDepNames
+          .filter((d) =>
+            [
+              "next", "react", "tailwindcss", "express", "prisma", "@prisma/client", "fastapi", "django",
+              "vue", "svelte", "typescript", "zustand", "streamlit", "groq", "openai", "minsearch",
+              "langchain", "llama-index", "pydantic", "flask", "actix-web", "gin", "fiber"
+            ].includes(d.toLowerCase())
+          )
+          .map((d) => FRAMEWORK_DISPLAY_MAP[d.toLowerCase()] || d),
       ])
     );
 

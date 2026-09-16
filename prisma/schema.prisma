@@ -1,4 +1,7 @@
 datasource db {
+  // To switch to PostgreSQL (Neon, Supabase, Railway, etc.):
+  // 1. Change provider to "postgresql"
+  // 2. Set DATABASE_URL="postgresql://..." in your .env
   provider = "sqlite"
   url      = env("DATABASE_URL")
 }
@@ -16,6 +19,7 @@ model User {
   accessToken  String?
   repositories Repository[]
   createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @default(now()) @updatedAt
 }
 
 model Repository {
@@ -24,17 +28,24 @@ model Repository {
   name            String
   fullName        String            @unique
   defaultBranch   String            @default("main")
+  lastAnalyzedSha String?
   userId          String
   user            User              @relation(fields: [userId], references: [id])
   readmes         GeneratedReadme[]
   createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @default(now()) @updatedAt
+
+  @@index([userId])
 }
 
 model GeneratedReadme {
   id           String     @id @default(cuid())
   repositoryId String
   repository   Repository @relation(fields: [repositoryId], references: [id])
-  persona      String     @default("PORTFOLIO")
+  persona      String     @default("ENTERPRISE")
   content      String
   createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @default(now()) @updatedAt
+
+  @@index([repositoryId])
 }

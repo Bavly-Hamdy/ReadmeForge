@@ -1,6 +1,14 @@
 import { NextAuthOptions } from "next-auth";
 import GithubProvider from "next-auth/providers/github";
 
+const secret = process.env.NEXTAUTH_SECRET;
+if (!secret) {
+  throw new Error(
+    "[AUTH FATAL] NEXTAUTH_SECRET is not set. " +
+    "Generate one with: openssl rand -base64 32"
+  );
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     GithubProvider({
@@ -8,7 +16,7 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.GITHUB_CLIENT_SECRET || "",
       authorization: {
         params: {
-          scope: "read:user user:email public_repo",
+          scope: "read:user user:email repo",
         },
       },
     }),
@@ -33,5 +41,6 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/",
   },
-  secret: process.env.NEXTAUTH_SECRET || "readme_forge_super_secret_key_2026_dev_mode",
+  secret,
 };
+

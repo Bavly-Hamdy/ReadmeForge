@@ -21,6 +21,7 @@ interface ReadmeStore {
   releaseNotes: string;
   digest: RepoDigest | null;
   error: string | null;
+  editHistory: string[];
 
   toggleTheme: () => void;
   setRepoUrl: (url: string) => void;
@@ -42,13 +43,15 @@ interface ReadmeStore {
   setReleaseNotes: (notes: string) => void;
   setDigest: (digest: RepoDigest | null) => void;
   setError: (error: string | null) => void;
+  pushEditHistory: (content: string) => void;
+  undoEdit: () => void;
   reset: () => void;
 }
 
 export const useReadmeStore = create<ReadmeStore>((set) => ({
   theme: "dark",
   repoUrl: "",
-  persona: "PORTFOLIO",
+  persona: "ENTERPRISE",
   customTitle: "",
   demoUrl: "",
   teamName: "",
@@ -65,6 +68,7 @@ export const useReadmeStore = create<ReadmeStore>((set) => ({
   releaseNotes: "",
   digest: null,
   error: null,
+  editHistory: [],
 
   toggleTheme: () =>
     set((state) => ({ theme: state.theme === "dark" ? "light" : "dark" })),
@@ -84,18 +88,40 @@ export const useReadmeStore = create<ReadmeStore>((set) => ({
       collaborators: state.collaborators.filter((_, i) => i !== index),
     })),
   setIsGenerating: (isGenerating) => set({ isGenerating }),
-  setGeneratedMarkdown: (generatedMarkdown) => set({ generatedMarkdown }),
+  setGeneratedMarkdown: (generatedMarkdown) =>
+    set((state) => {
+      const history = state.generatedMarkdown
+        ? [...state.editHistory.slice(-20), state.generatedMarkdown]
+        : state.editHistory;
+      return {
+        generatedMarkdown,
+        editHistory: history,
+      };
+    }),
   setGeneratedLicense: (generatedLicense) => set({ generatedLicense }),
   setSuggestedDescription: (suggestedDescription) => set({ suggestedDescription }),
   setSuggestedTopics: (suggestedTopics) => set({ suggestedTopics }),
   setReleaseNotes: (releaseNotes) => set({ releaseNotes }),
   setDigest: (digest) => set({ digest }),
   setError: (error) => set({ error, isGenerating: false }),
+  pushEditHistory: (content) =>
+    set((state) => ({
+      editHistory: [...state.editHistory.slice(-20), content],
+    })),
+  undoEdit: () =>
+    set((state) => {
+      if (state.editHistory.length === 0) return state;
+      const prev = state.editHistory[state.editHistory.length - 1];
+      return {
+        generatedMarkdown: prev,
+        editHistory: state.editHistory.slice(0, -1),
+      };
+    }),
   reset: () =>
     set({
       theme: "dark",
       repoUrl: "",
-      persona: "PORTFOLIO",
+      persona: "ENTERPRISE",
       customTitle: "",
       demoUrl: "",
       teamName: "",
@@ -112,6 +138,7 @@ export const useReadmeStore = create<ReadmeStore>((set) => ({
       releaseNotes: "",
       digest: null,
       error: null,
+      editHistory: [],
     }),
 }));
 

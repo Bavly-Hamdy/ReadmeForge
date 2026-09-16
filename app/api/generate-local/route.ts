@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
-import { getOctokitClient } from "@/lib/github/octokit";
-import { fetchRepoTree, fetchBlobsThrottled, GitTreeItem } from "@/lib/github/tree";
 import { AnalysisPipeline } from "@/worker/pipeline";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { generateMITLicense } from "@/lib/license/mit";
 import { generateRepoMetadata } from "@/lib/ai/gemini";
-import { generateRequestSchema } from "@/lib/validation/generate-schema";
+import { generateLocalRequestSchema } from "@/lib/validation/generate-schema";
 import { Persona, CollaboratorInfo } from "@/types/repo-digest";
 
 export const dynamic = "force-dynamic";
@@ -20,8 +18,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON request payload" }, { status: 400 });
   }
 
-  // 1. Zod Input Validation
-  const validationResult = generateRequestSchema.safeParse(body);
+  // 1. Zod Validation
+  const validationResult = generateLocalRequestSchema.safeParse(body);
   if (!validationResult.success) {
     return NextResponse.json(
       {
@@ -33,7 +31,8 @@ export async function POST(req: Request) {
   }
 
   const {
-    repoUrl,
+    treePaths,
+    fileContents,
     customTitle,
     demoUrl,
     teamName,
@@ -44,37 +43,10 @@ export async function POST(req: Request) {
     collaborators,
   } = validationResult.data;
 
-  // 2. Parse Owner and Repo from GitHub URL
-  const match = repoUrl.match(/github\.com\/([^/]+)\/([^/#?]+)/);
-  if (!match) {
-    return NextResponse.json(
-      { error: "Invalid GitHub URL format. Example: https://github.com/owner/repo" },
-      { status: 400 }
-    );
-  }
-
-  const owner = match[1];
-  const repo = match[2].replace(/\.git$/, "");
-  const fullName = `${owner}/${repo}`;
-
-  // 3. User Authentication & Token resolution
+  const repoTitle = customTitle || "Local Project";
   const session = await getServerSession(authOptions);
-  const userAccessToken = session?.user?.accessToken;
-  const serverToken = process.env.GITHUB_TOKEN;
-  const effectiveToken = userAccessToken || serverToken;
 
-  if (!effectiveToken) {
-    return NextResponse.json(
-      {
-        error:
-          "GitHub API access is unauthenticated (60 req/hr limit). " +
-          "Please sign in with your GitHub account to generate READMEs.",
-      },
-      { status: 401 }
-    );
-  }
-
-  // 4. Initialize SSE Stream Response
+  // 2. Initialize SSE Stream Response
   const stream = new TransformStream();
   const writer = stream.writable.getWriter();
   const encoder = new TextEncoder();
@@ -84,125 +56,46 @@ export async function POST(req: Request) {
       const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
       await writer.write(encoder.encode(payload));
     } catch (e) {
-      console.error("[SSE Stream Write Error]:", e);
+      console.error("[SSE Local Stream Write Error]:", e);
     }
   };
 
-  // Run pipeline asynchronously inside stream worker
   (async () => {
     try {
-      const octokit = getOctokitClient(effectiveToken);
-
-      await sendEvent("stage-progress", {
-        stage: 0,
-        progress: 10,
-        message: `Connecting to GitHub API for ${fullName}...`,
-      });
-
-      // Fetch Tree and Manifests
-      let treeResponse;
-      let repoDescription: string | null = null;
-      try {
-        treeResponse = await fetchRepoTree(octokit, { owner, repo });
-        repoDescription = treeResponse.repoDescription;
-      } catch (err: unknown) {
-        const status = (err as any)?.status ?? (err as any)?.response?.status;
-        const isRateLimit = status === 403 || status === 429;
-        const message =
-          err instanceof Error ? err.message : "Failed to fetch repository details from GitHub";
-
-        if (isRateLimit) {
-          throw new Error("GitHub API rate limit exceeded. Please wait a moment and try again.");
-        }
-        throw new Error(`Could not access repository '${fullName}'. Verify access or repository name. (${message})`);
-      }
-
-      const treePaths = treeResponse.tree
-        .map((t) => t.path)
-        .filter((p): p is string => Boolean(p));
-
-      const treeMap = new Map<string, GitTreeItem>();
-      for (const item of treeResponse.tree) {
-        if (item.path && item.type === "blob") {
-          treeMap.set(item.path, item);
-        }
-      }
-
-      const manifestFileNames = [
-        "package.json",
-        "requirements.txt",
-        "pyproject.toml",
-        "Pipfile",
-        "uv.lock",
-        "Cargo.toml",
-        "go.mod",
-        "pom.xml",
-        "build.gradle",
-        ".env.example",
-        ".env.local",
-      ];
-      const manifestPaths = treePaths.filter((path) => {
-        const name = path.split("/").pop();
-        return name && manifestFileNames.includes(name);
-      });
-
-      const manifestItems = manifestPaths
-        .map((p) => ({ path: p, sha: treeMap.get(p)?.sha ?? "" }))
-        .filter((x) => x.sha);
-
-      const manifestContents: Record<string, string> = await fetchBlobsThrottled(
-        octokit,
-        owner,
-        repo,
-        manifestItems,
-        Boolean(effectiveToken)
-      );
-
-      // Initialize Pipeline
       const pipeline = new AnalysisPipeline();
 
       // Stage 0: Structural Extraction
       await sendEvent("stage-progress", {
         stage: 0,
         progress: 25,
-        message: `Extracted structure & ${manifestPaths.length} configuration manifests`,
+        message: `Parsed local file tree (${treePaths.length} files detected)`,
       });
-      const stage0 = await pipeline.runStage0(treePaths, manifestContents);
+
+      const stage0 = await pipeline.runStage0(treePaths, fileContents);
 
       // Stage 1: Relevance Filtering
       await sendEvent("stage-progress", {
         stage: 1,
         progress: 45,
-        message: `Filtering files (${treePaths.length} total entries analyzed)`,
+        message: `Filtering source code files...`,
       });
+
       const stage1 = await pipeline.runStage1(treePaths);
 
-      // Stage 2: Code Summarization
+      // Stage 2: Code Module Summarization
       await sendEvent("stage-progress", {
         stage: 2,
-        progress: 60,
-        message: `Summarizing top code modules via Gemini AI...`,
+        progress: 65,
+        message: `Summarizing core code modules via Gemini AI...`,
       });
 
       const topPrioritized = stage1.prioritizedFiles.slice(0, 10);
-      const codeItems = topPrioritized
-        .map((f) => ({ path: f.path, sha: treeMap.get(f.path)?.sha ?? "" }))
-        .filter((x) => x.sha);
-
-      const fetchedCode = await fetchBlobsThrottled(
-        octokit,
-        owner,
-        repo,
-        codeItems,
-        Boolean(effectiveToken)
-      );
-
       const topModules = topPrioritized.map((f) => ({
         moduleName: f.path,
         files: [
           {
             path: f.path,
-            content: (fetchedCode[f.path] ?? `// File ${f.path}`).slice(0, 2500),
+            content: (fileContents[f.path] ?? `// File ${f.path}`).slice(0, 2500),
           },
         ],
       }));
@@ -217,20 +110,20 @@ export async function POST(req: Request) {
       });
 
       const digest = await pipeline.runStage3(
-        `${owner}/${repo}`,
-        repoDescription || null,
+        repoTitle,
+        `Locally uploaded repository project: ${repoTitle}`,
         moduleSummaries,
         stage0
       );
 
-      const licenseAuthor = authorName || teamName || session?.user?.name || owner;
+      const licenseAuthor = authorName || teamName || session?.user?.name || "Project Author";
       const finalCopyrightYear = copyrightYear || new Date().getFullYear().toString();
 
       // Stage 4: Gemini README Generation
       await sendEvent("stage-progress", {
         stage: 4,
         progress: 92,
-        message: `Generating ${persona} style README markdown and diagrams...`,
+        message: `Generating ${persona} style README markdown...`,
       });
 
       const normalizedCollaborators: CollaboratorInfo[] = (collaborators || []).map((c) => ({
@@ -244,13 +137,12 @@ export async function POST(req: Request) {
         persona: persona as Persona,
         teamName,
         demoUrl,
-        customTitle,
+        customTitle: repoTitle,
         authorName: licenseAuthor,
         copyrightYear: finalCopyrightYear,
         collaborators: normalizedCollaborators,
       });
 
-      // Generate suggested metadata & license
       const metadataRes = await generateRepoMetadata(digest);
       const licenseContent =
         includeLicense !== false
@@ -263,7 +155,7 @@ export async function POST(req: Request) {
         message: "Finalizing documentation and badges...",
       });
 
-      // Non-blocking Database Persistence
+      // Database Persistence (non-blocking)
       try {
         let dbUser = null;
         if (session?.user?.username) {
@@ -284,17 +176,14 @@ export async function POST(req: Request) {
         }
 
         const dbRepo = await prisma.repository.upsert({
-          where: { fullName },
-          update: {
-            lastAnalyzedSha: treeResponse.sha,
-          },
+          where: { fullName: `local/${repoTitle.toLowerCase().replace(/\s+/g, "-")}` },
+          update: {},
           create: {
-            owner,
-            name: repo,
-            fullName,
+            owner: "local",
+            name: repoTitle,
+            fullName: `local/${repoTitle.toLowerCase().replace(/\s+/g, "-")}`,
             defaultBranch: "main",
             userId: dbUser.id,
-            lastAnalyzedSha: treeResponse.sha,
           },
         });
 
@@ -305,11 +194,10 @@ export async function POST(req: Request) {
             content: markdown,
           },
         });
-      } catch (dbError) {
-        console.warn("[API Generate] DB persistence warning (non-fatal):", dbError);
+      } catch (dbErr) {
+        console.warn("[Local Generate] DB persistence warning (non-fatal):", dbErr);
       }
 
-      // Send Complete Event
       await sendEvent("complete", {
         success: true,
         markdown,
@@ -318,11 +206,11 @@ export async function POST(req: Request) {
         suggestedTopics: metadataRes.suggestedTopics,
         releaseNotes: metadataRes.releaseNotes,
         digest,
-        commitSha: treeResponse.sha,
+        commitSha: null,
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Internal Server Error";
-      console.error("[API Generate Stream Error]:", err);
+      console.error("[Local Generate Stream Error]:", err);
       await sendEvent("error", { error: message });
     } finally {
       await writer.close();

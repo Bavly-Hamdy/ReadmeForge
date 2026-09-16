@@ -19,22 +19,28 @@ import {
   CheckCircle2,
   Timer,
   Check,
+  Building2,
+  Briefcase,
+  HeartHandshake,
+  FileArchive,
+  UploadCloud,
 } from "lucide-react";
 import { useReadmeStore } from "@/lib/store/use-readme-store";
-
-// Persona is permanently hardcoded to ENTERPRISE — no selector UI needed.
+import { PERSONA_REGISTRY, Persona } from "@/lib/ai/personas";
+import { LocalUpload } from "./local-upload";
 
 const STAGES = [
-  { id: 0, title: "Stage 1/5", subtitle: "Parsing AST & Git Trees", icon: Search, targetProgress: 22 },
-  { id: 1, title: "Stage 2/5", subtitle: "Filtering Routes & Entrypoints", icon: Filter, targetProgress: 45 },
-  { id: 2, title: "Stage 3/5", subtitle: "Summarizing Exported Interfaces", icon: Brain, targetProgress: 68 },
-  { id: 3, title: "Stage 4/5", subtitle: "Constructing Topology & ADR", icon: BarChart3, targetProgress: 86 },
-  { id: 4, title: "Stage 5/5", subtitle: "Synthesizing GFM & Mermaid SVG", icon: Sparkles, targetProgress: 98 },
+  { id: 0, title: "Stage 1/5", subtitle: "Parsing AST & Manifests", icon: Search },
+  { id: 1, title: "Stage 2/5", subtitle: "Filtering Routes & Entrypoints", icon: Filter },
+  { id: 2, title: "Stage 3/5", subtitle: "Summarizing Exported Interfaces", icon: Brain },
+  { id: 3, title: "Stage 4/5", subtitle: "Constructing Topology & ADR", icon: BarChart3 },
+  { id: 4, title: "Stage 5/5", subtitle: "Synthesizing GFM & Mermaid SVG", icon: Sparkles },
 ];
 
 export function GeneratorForm() {
   const {
     repoUrl,
+    persona,
     customTitle,
     demoUrl,
     teamName,
@@ -46,6 +52,7 @@ export function GeneratorForm() {
     isGenerating,
     error,
     setRepoUrl,
+    setPersona,
     setCustomTitle,
     setDemoUrl,
     setTeamName,
@@ -65,14 +72,12 @@ export function GeneratorForm() {
     setError,
   } = useReadmeStore();
 
-  // Auto-detect repo owner when repoUrl changes if authorName is empty
-  const handleRepoUrlChange = (url: string) => {
-    setRepoUrl(url);
-    const match = url.match(/github\.com\/([^/]+)\/([^/#?]+)/);
-    if (match && match[1] && !authorName) {
-      setAuthorName(match[1]);
-    }
-  };
+  const [inputMode, setInputMode] = useState<"github" | "local">("github");
+  const [localProjectData, setLocalProjectData] = useState<{
+    treePaths: string[];
+    fileContents: Record<string, string>;
+    projectName: string;
+  } | null>(null);
 
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [collabName, setCollabName] = useState("");
@@ -82,97 +87,41 @@ export function GeneratorForm() {
 
   const [progress, setProgress] = useState(0);
   const [currentStage, setCurrentStage] = useState(0);
+  const [serverMessage, setServerMessage] = useState<string>("");
   const [elapsedMs, setElapsedMs] = useState(0);
   const [isFinished, setIsFinished] = useState(false);
   const [apiResult, setApiResult] = useState<{ markdown: string; digest: any } | null>(null);
 
   const stepperRef = useRef<HTMLDivElement>(null);
 
-  // Refs so interval callbacks always read the latest values — no stale closures
-  const isFinishedRef = useRef(false);
-  const currentStageRef = useRef(0);
-  const progressRef = useRef(0);
+  // Auto-detect repo owner when repoUrl changes if authorName is empty
+  const handleRepoUrlChange = (url: string) => {
+    setRepoUrl(url);
+    const match = url.match(/github\.com\/([^/]+)\/([^/#?]+)/);
+    if (match && match[1] && !authorName) {
+      setAuthorName(match[1]);
+    }
+  };
 
-  // Single effect — fires only when isGenerating toggles. All intervals read
-  // live values through refs so there are ZERO stale-closure bugs.
+  // Stopwatch timer for real-time generation elapsed display
   useEffect(() => {
     if (!isGenerating) {
-      // Reset everything when generation stops
-      setProgress(0);
-      setCurrentStage(0);
-      setElapsedMs(0);
-      setIsFinished(false);
-      setApiResult(null);
-      isFinishedRef.current = false;
-      currentStageRef.current = 0;
-      progressRef.current = 0;
       return;
     }
 
-    // Scroll progress card into view
-    setTimeout(() => {
-      stepperRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 50);
-
-    // ── Timer: elapsed seconds display ──
     const startTime = Date.now();
     const timerInterval = setInterval(() => {
       setElapsedMs(Date.now() - startTime);
     }, 100);
 
-    // ── Progress tick: runs at 40 ms, reads refs for fresh values ──
-    const tickInterval = setInterval(() => {
-      if (isFinishedRef.current) {
-        // API returned — sprint to 100%
-        const next = progressRef.current + 4.5;
-        if (next >= 100) {
-          progressRef.current = 100;
-          setProgress(100);
-          clearInterval(tickInterval);
-          return;
-        }
-        progressRef.current = next;
-        setProgress(next);
-      } else {
-        // Creep toward the current stage's target
-        const target = STAGES[currentStageRef.current]?.targetProgress ?? 95;
-        const prev = progressRef.current;
-        if (prev < target) {
-          const next = prev + Math.max(0.3, (target - prev) * 0.1);
-          progressRef.current = next;
-          setProgress(next);
-        }
-      }
-    }, 40);
+    return () => clearInterval(timerInterval);
+  }, [isGenerating]);
 
-    // ── Stage advance: every 2.2 s while API hasn't returned ──
-    const stageInterval = setInterval(() => {
-      if (!isFinishedRef.current) {
-        const next = Math.min(currentStageRef.current + 1, STAGES.length - 1);
-        currentStageRef.current = next;
-        setCurrentStage(next);
-      } else {
-        clearInterval(stageInterval);
-      }
-    }, 2200);
-
-    return () => {
-      clearInterval(timerInterval);
-      clearInterval(tickInterval);
-      clearInterval(stageInterval);
-    };
-  }, [isGenerating]); // ← only isGenerating — no stale restarts on every stage tick
-
-  // When the API result arrives, mark finished via ref so the tick interval picks it up
+  // Handle completion transitions
   useEffect(() => {
     if (isFinished && apiResult) {
-      isFinishedRef.current = true;
-      setCurrentStage(STAGES.length - 1);
-      // After fill reaches 100%, give a short pause then close the generating state
       const timeout = setTimeout(() => {
         setIsGenerating(false);
-
-        // Smooth scroll to README Preview
         setTimeout(() => {
           document.getElementById("readme-preview-section")?.scrollIntoView({
             behavior: "smooth",
@@ -200,58 +149,133 @@ export function GeneratorForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!repoUrl.trim()) {
+    if (inputMode === "github" && !repoUrl.trim()) {
       setError("Please enter a valid GitHub repository URL.");
       return;
     }
 
+    if (inputMode === "local" && !localProjectData) {
+      setError("Please upload a .zip project archive first.");
+      return;
+    }
+
     setIsGenerating(true);
-    setProgress(0);
+    setProgress(5);
     setCurrentStage(0);
+    setServerMessage("Initializing pipeline...");
     setElapsedMs(0);
     setIsFinished(false);
     setApiResult(null);
     setError(null);
     setIsAuthError(false);
     setGeneratedMarkdown(null);
-    // Keep refs in sync with state resets
-    isFinishedRef.current = false;
-    currentStageRef.current = 0;
-    progressRef.current = 0;
+
+    // Scroll progress card into view smoothly
+    setTimeout(() => {
+      stepperRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
 
     try {
-      const res = await fetch("/api/generate", {
+      const endpoint = inputMode === "github" ? "/api/generate" : "/api/generate-local";
+      const payload =
+        inputMode === "github"
+          ? {
+              repoUrl,
+              persona: (persona as Persona) || "ENTERPRISE",
+              customTitle: customTitle.trim() || undefined,
+              demoUrl: demoUrl.trim() || undefined,
+              teamName: teamName.trim() || undefined,
+              authorName: authorName.trim() || undefined,
+              copyrightYear: copyrightYear.trim() || undefined,
+              licenseType,
+              includeLicense,
+              collaborators,
+            }
+          : {
+              treePaths: localProjectData!.treePaths,
+              fileContents: localProjectData!.fileContents,
+              persona: (persona as Persona) || "ENTERPRISE",
+              customTitle: (customTitle.trim() || localProjectData!.projectName) || undefined,
+              demoUrl: demoUrl.trim() || undefined,
+              teamName: teamName.trim() || undefined,
+              authorName: authorName.trim() || undefined,
+              copyrightYear: copyrightYear.trim() || undefined,
+              licenseType,
+              includeLicense,
+              collaborators,
+            };
+
+      const response = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          repoUrl,
-          persona: "ENTERPRISE",
-          customTitle: customTitle.trim() || undefined,
-          demoUrl: demoUrl.trim() || undefined,
-          teamName: teamName.trim() || undefined,
-          authorName: authorName.trim() || undefined,
-          includeLicense,
-          collaborators,
-        }),
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
+        body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        if (res.status === 401) setIsAuthError(true);
-        throw new Error(data.error || "Failed to generate README.");
+      if (!response.ok) {
+        if (response.status === 401) setIsAuthError(true);
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Request failed with status ${response.status}`);
       }
 
-      // Immediately set generated markdown, license, and metadata in store
-      setGeneratedMarkdown(data.markdown);
-      setGeneratedLicense(data.licenseContent || null);
-      if (data.suggestedDescription) setSuggestedDescription(data.suggestedDescription);
-      if (data.suggestedTopics) setSuggestedTopics(data.suggestedTopics);
-      if (data.releaseNotes) setReleaseNotes(data.releaseNotes);
-      setDigest(data.digest);
-      setApiResult({ markdown: data.markdown, digest: data.digest });
-      setIsFinished(true);
-      setCurrentStage(STAGES.length - 1);
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("Server-Sent Events streaming is not supported by your browser.");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split("\n\n");
+        buffer = events.pop() || "";
+
+        for (const block of events) {
+          if (!block.trim()) continue;
+          let eventName = "message";
+          let dataStr = "";
+
+          for (const line of block.split("\n")) {
+            if (line.startsWith("event: ")) {
+              eventName = line.slice(7).trim();
+            } else if (line.startsWith("data: ")) {
+              dataStr = line.slice(6).trim();
+            }
+          }
+
+          if (!dataStr) continue;
+
+          try {
+            const data = JSON.parse(dataStr);
+            if (eventName === "stage-progress") {
+              if (typeof data.stage === "number") setCurrentStage(data.stage);
+              if (typeof data.progress === "number") setProgress(data.progress);
+              if (data.message) setServerMessage(data.message);
+            } else if (eventName === "complete") {
+              setGeneratedMarkdown(data.markdown);
+              setGeneratedLicense(data.licenseContent || null);
+              if (data.suggestedDescription) setSuggestedDescription(data.suggestedDescription);
+              if (data.suggestedTopics) setSuggestedTopics(data.suggestedTopics);
+              if (data.releaseNotes) setReleaseNotes(data.releaseNotes);
+              setDigest(data.digest);
+              setApiResult({ markdown: data.markdown, digest: data.digest });
+              setProgress(100);
+              setIsFinished(true);
+              setCurrentStage(STAGES.length - 1);
+            } else if (eventName === "error") {
+              throw new Error(data.error || "Generation pipeline encountered an error.");
+            }
+          } catch (streamErr: any) {
+            if (eventName === "error" || streamErr.message?.includes("pipeline")) {
+              throw streamErr;
+            }
+          }
+        }
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "An error occurred during generation.";
       setError(msg);
@@ -259,115 +283,395 @@ export function GeneratorForm() {
     }
   };
 
-  const activeStageObj = STAGES[currentStage];
+  const activeStageObj = STAGES[currentStage] || STAGES[0];
   const StageIcon = activeStageObj.icon;
   const roundedProgress = Math.min(100, Math.floor(progress));
   const isComplete = isFinished && roundedProgress === 100;
 
-  // Derive status text from progress range — no extra state needed
-  const statusText =
-    roundedProgress >= 100
-      ? "README Ready! ✨"
-      : roundedProgress >= 80
-      ? "Formatting Markdown & Diagrams..."
-      : roundedProgress >= 50
-      ? "Running Gemini AI Summarization..."
-      : roundedProgress >= 25
-      ? "Parsing Dependencies & Stack..."
-      : "Fetching Repository Tree...";
+  const currentPersona = (persona as Persona) || "ENTERPRISE";
 
   return (
     <div className="w-full max-w-4xl mx-auto flex flex-col items-center">
-      {/* Enterprise mode badge — persona is locked, no selector shown */}
-      <div className="w-full flex items-center gap-3 mb-6">
-        <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-[11px] font-mono font-semibold uppercase tracking-wider">
-          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
-          Enterprise SaaS Mode
-        </span>
-        <span className="text-[11px] text-neutral-500 dark:text-neutral-500 font-mono">
-          Full API matrix · Mermaid architecture · Compliance &amp; deployment docs
-        </span>
+      {/* ── PERSONA SELECTOR GRID ── */}
+      <div className="w-full mb-6">
+        <div className="flex items-center justify-between mb-2.5">
+          <label className="text-xs font-mono font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+            Select Output Persona &amp; Tone
+          </label>
+          <span className="text-[11px] text-neutral-400 font-mono">
+            {PERSONA_REGISTRY[currentPersona]?.sections.length} tailored sections
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+          {(Object.keys(PERSONA_REGISTRY) as Persona[]).map((pKey) => {
+            const p = PERSONA_REGISTRY[pKey];
+            const isSelected = currentPersona === pKey;
+            const IconComponent =
+              pKey === "ENTERPRISE"
+                ? Building2
+                : pKey === "PORTFOLIO"
+                ? Briefcase
+                : pKey === "OPEN_SOURCE"
+                ? HeartHandshake
+                : Sparkles;
+
+            return (
+              <button
+                key={pKey}
+                type="button"
+                onClick={() => setPersona(pKey)}
+                disabled={isGenerating}
+                className={`flex flex-col text-left p-3.5 rounded-xl border transition-all duration-200 relative overflow-hidden ${
+                  isSelected
+                    ? "border-indigo-500 bg-indigo-500/10 dark:bg-indigo-500/15 shadow-sm ring-1 ring-indigo-500"
+                    : "border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/50 hover:border-neutral-300 dark:hover:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                } ${isGenerating ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
+              >
+                <div className="flex items-center justify-between w-full mb-2">
+                  <div
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                      isSelected
+                        ? "bg-indigo-600 text-white"
+                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
+                    }`}
+                  >
+                    <IconComponent className="w-3.5 h-3.5" />
+                  </div>
+                  {isSelected && (
+                    <span className="w-4 h-4 rounded-full bg-indigo-500 text-white flex items-center justify-center text-[10px]">
+                      <Check className="w-2.5 h-2.5" />
+                    </span>
+                  )}
+                </div>
+                <h4 className="text-xs font-bold text-neutral-900 dark:text-neutral-100 mb-0.5">
+                  {p.label}
+                </h4>
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-tight">
+                  {p.description}
+                </p>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Main Repo URL Form */}
-      <form onSubmit={handleSubmit} className="w-full flex flex-col gap-4">
-        <div className="w-full minimal-card p-2 rounded-xl flex flex-col sm:flex-row gap-2 border border-neutral-300 dark:border-neutral-800 shadow-sm bg-neutral-100 dark:bg-neutral-900">
-          <div className="flex-1 flex items-center px-4 bg-white dark:bg-neutral-950 rounded-lg border border-neutral-300 dark:border-neutral-800 focus-within:border-neutral-500 dark:focus-within:border-neutral-600 transition-colors">
-            <GitBranch className="w-4 h-4 text-neutral-400 dark:text-neutral-500 mr-3 flex-shrink-0" />
-            <input
-              type="text"
-              value={repoUrl}
-              onChange={(e) => setRepoUrl(e.target.value)}
-              placeholder="https://github.com/owner/repository"
-              disabled={isGenerating}
-              className="w-full py-3 text-xs font-mono text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-600 bg-transparent focus:outline-none disabled:opacity-50"
-            />
-          </div>
-          {/* ── FORGE BUTTON: ENTERPRISE PROGRESS-FILL ── */}
+      {/* ── MODE TOGGLE TABS ── */}
+      <div className="w-full flex items-center justify-between mb-3">
+        <div className="inline-flex p-1 bg-neutral-200/70 dark:bg-neutral-800/70 rounded-xl border border-neutral-300/50 dark:border-neutral-700/50">
           <button
-            type="submit"
+            type="button"
+            onClick={() => setInputMode("github")}
             disabled={isGenerating}
-            role={isGenerating ? "progressbar" : undefined}
-            aria-valuenow={isGenerating ? roundedProgress : undefined}
-            aria-valuemin={isGenerating ? 0 : undefined}
-            aria-valuemax={isGenerating ? 100 : undefined}
-            aria-label={isGenerating ? `Generating README — ${roundedProgress}%` : "Forge Enterprise README"}
-            className="relative overflow-hidden rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 px-6 py-3 font-semibold text-white text-sm shadow-lg transition-all duration-300 disabled:cursor-not-allowed min-w-[220px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2"
+            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 ${
+              inputMode === "github"
+                ? "bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-sm"
+                : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+            }`}
           >
-            {/* Animated progress fill overlay */}
-            {isGenerating && (
-              <span
-                aria-hidden="true"
-                className={`absolute inset-y-0 left-0 transition-all duration-200 ease-out ${
-                  isComplete ? "bg-emerald-500/40" : "bg-indigo-500/50"
-                }`}
-                style={{ width: `${roundedProgress}%` }}
-              >
-                {/* Shimmer sweep */}
-                {!isComplete && (
-                  <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse" />
-                )}
-              </span>
-            )}
-
-            {/* Button inner content */}
-            <span className="relative z-10 flex items-center justify-between w-full">
-              {isGenerating ? (
-                isComplete ? (
-                  /* STATE 3 — Complete */
-                  <span className="flex items-center justify-center gap-2 w-full">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-300 flex-shrink-0" />
-                    <span>README Generated!</span>
-                  </span>
-                ) : (
-                  /* STATE 2 — In-progress */
-                  <>
-                    <span className="flex items-center gap-2 min-w-0">
-                      <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
-                      <span
-                        aria-live="polite"
-                        className="text-sm font-medium truncate max-w-[130px] sm:max-w-[180px]"
-                      >
-                        {statusText}
-                      </span>
-                    </span>
-                    <span className="font-mono text-xs font-bold tabular-nums flex-shrink-0">
-                      {roundedProgress}%
-                    </span>
-                  </>
-                )
-              ) : (
-                /* STATE 1 — Idle */
-                <span className="flex items-center justify-center gap-2 w-full">
-                  <Sparkles className="h-4 w-4" />
-                  <span>Forge Enterprise README</span>
-                </span>
-              )}
-            </span>
+            <GitBranch className="w-3.5 h-3.5" />
+            GitHub Repository
+          </button>
+          <button
+            type="button"
+            onClick={() => setInputMode("local")}
+            disabled={isGenerating}
+            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 ${
+              inputMode === "local"
+                ? "bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-sm"
+                : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+            }`}
+          >
+            <UploadCloud className="w-3.5 h-3.5" />
+            Upload Local Project (.zip)
           </button>
         </div>
 
-        {/* PROMINENT LIVE ANIMATED PROGRESS CARD WITH PERCENTAGE */}
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          disabled={isGenerating}
+          className="text-xs font-mono text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-200 transition-colors flex items-center gap-1.5"
+        >
+          <span>Advanced Config</span>
+          {showAdvanced ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+        </button>
+      </div>
+
+      {/* ── INPUT METHOD CONTAINER ── */}
+      <form onSubmit={handleSubmit} className="w-full flex flex-col gap-4">
+        {inputMode === "github" ? (
+          <div className="w-full minimal-card p-2 rounded-xl flex flex-col sm:flex-row gap-2 border border-neutral-300 dark:border-neutral-800 shadow-sm bg-neutral-100 dark:bg-neutral-900">
+            <div className="flex-1 flex items-center px-4 bg-white dark:bg-neutral-950 rounded-lg border border-neutral-300 dark:border-neutral-800 focus-within:border-neutral-500 dark:focus-within:border-neutral-600 transition-colors">
+              <GitBranch className="w-4 h-4 text-neutral-400 dark:text-neutral-500 mr-3 flex-shrink-0" />
+              <input
+                type="text"
+                value={repoUrl}
+                onChange={(e) => handleRepoUrlChange(e.target.value)}
+                placeholder="https://github.com/owner/repository"
+                disabled={isGenerating}
+                className="w-full py-3 text-xs font-mono text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-600 bg-transparent focus:outline-none disabled:opacity-50"
+              />
+            </div>
+            {/* Forge Button */}
+            <button
+              type="submit"
+              disabled={isGenerating}
+              className="relative overflow-hidden rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 px-6 py-3 font-semibold text-white text-sm shadow-lg transition-all duration-300 disabled:cursor-not-allowed min-w-[220px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2"
+            >
+              {isGenerating && (
+                <span
+                  aria-hidden="true"
+                  className={`absolute inset-y-0 left-0 transition-all duration-300 ease-out ${
+                    isComplete ? "bg-emerald-500/40" : "bg-indigo-500/50"
+                  }`}
+                  style={{ width: `${roundedProgress}%` }}
+                />
+              )}
+
+              <span className="relative z-10 flex items-center justify-between w-full">
+                {isGenerating ? (
+                  isComplete ? (
+                    <span className="flex items-center justify-center gap-2 w-full">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-300 flex-shrink-0" />
+                      <span>README Generated!</span>
+                    </span>
+                  ) : (
+                    <>
+                      <span className="flex items-center gap-2 min-w-0">
+                        <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
+                        <span className="text-sm font-medium truncate max-w-[130px] sm:max-w-[180px]">
+                          {serverMessage || activeStageObj.subtitle}
+                        </span>
+                      </span>
+                      <span className="font-mono text-xs font-bold tabular-nums flex-shrink-0">
+                        {roundedProgress}%
+                      </span>
+                    </>
+                  )
+                ) : (
+                  <span className="flex items-center justify-center gap-2 w-full">
+                    <Sparkles className="h-4 w-4" />
+                    <span>Forge {PERSONA_REGISTRY[currentPersona]?.label || "README"}</span>
+                  </span>
+                )}
+              </span>
+            </button>
+          </div>
+        ) : (
+          <div className="w-full flex flex-col gap-3">
+            <LocalUpload
+              disabled={isGenerating}
+              onZipProcessed={(data) => {
+                setLocalProjectData(data);
+                if (!customTitle) setCustomTitle(data.projectName);
+              }}
+            />
+            {localProjectData && (
+              <button
+                type="submit"
+                disabled={isGenerating}
+                className="w-full relative overflow-hidden rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 px-6 py-3 font-semibold text-white text-sm shadow-lg transition-all duration-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isGenerating && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute inset-y-0 left-0 bg-indigo-500/50 transition-all duration-300 ease-out"
+                    style={{ width: `${roundedProgress}%` }}
+                  />
+                )}
+                <span className="relative z-10 flex items-center gap-2">
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>{serverMessage || "Processing local code..."} ({roundedProgress}%)</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      <span>Forge README for {localProjectData.projectName}</span>
+                    </>
+                  )}
+                </span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* ── ADVANCED CONFIGURATION ACCORDION ── */}
+        <AnimatePresence>
+          {showAdvanced && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.25 }}
+              className="w-full overflow-hidden"
+            >
+              <div className="w-full p-5 rounded-xl border border-neutral-300 dark:border-neutral-800 bg-white/50 dark:bg-neutral-900/50 backdrop-blur-sm flex flex-col gap-4">
+                <h4 className="text-xs font-mono font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+                  Documentation &amp; Branding Metadata
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-mono text-neutral-500 dark:text-neutral-400 block mb-1">
+                      Custom Project Title
+                    </label>
+                    <input
+                      type="text"
+                      value={customTitle}
+                      onChange={(e) => setCustomTitle(e.target.value)}
+                      placeholder="e.g., ReadmeForge Next-Gen"
+                      disabled={isGenerating}
+                      className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-neutral-300 dark:border-neutral-800 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 focus:outline-none focus:border-neutral-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-mono text-neutral-500 dark:text-neutral-400 block mb-1">
+                      Live Demo / Website URL
+                    </label>
+                    <input
+                      type="url"
+                      value={demoUrl}
+                      onChange={(e) => setDemoUrl(e.target.value)}
+                      placeholder="https://your-demo-app.com"
+                      disabled={isGenerating}
+                      className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-neutral-300 dark:border-neutral-800 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 focus:outline-none focus:border-neutral-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-mono text-neutral-500 dark:text-neutral-400 block mb-1">
+                      Team / Organization Name
+                    </label>
+                    <input
+                      type="text"
+                      value={teamName}
+                      onChange={(e) => setTeamName(e.target.value)}
+                      placeholder="e.g., Acme Cloud Core"
+                      disabled={isGenerating}
+                      className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-neutral-300 dark:border-neutral-800 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 focus:outline-none focus:border-neutral-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-mono text-neutral-500 dark:text-neutral-400 block mb-1">
+                      Author / Copyright Holder
+                    </label>
+                    <input
+                      type="text"
+                      value={authorName}
+                      onChange={(e) => setAuthorName(e.target.value)}
+                      placeholder="e.g., John Doe"
+                      disabled={isGenerating}
+                      className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-neutral-300 dark:border-neutral-800 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 focus:outline-none focus:border-neutral-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-neutral-200 dark:border-neutral-800">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={includeLicense}
+                      onChange={(e) => setIncludeLicense(e.target.checked)}
+                      disabled={isGenerating}
+                      className="rounded border-neutral-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-xs font-mono text-neutral-700 dark:text-neutral-300">
+                      Generate official LICENSE file (MIT)
+                    </span>
+                  </label>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono text-neutral-500">Year:</span>
+                    <input
+                      type="text"
+                      value={copyrightYear}
+                      onChange={(e) => setCopyrightYear(e.target.value)}
+                      placeholder="2026"
+                      disabled={isGenerating}
+                      className="w-20 px-2 py-1 text-xs font-mono rounded border border-neutral-300 dark:border-neutral-800 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 text-center"
+                    />
+                  </div>
+                </div>
+
+                {/* Collaborators List */}
+                <div className="pt-2 border-t border-neutral-200 dark:border-neutral-800 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono font-medium text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5" /> Collaborators &amp; Authors ({collaborators.length})
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      type="text"
+                      value={collabName}
+                      onChange={(e) => setCollabName(e.target.value)}
+                      placeholder="Name"
+                      disabled={isGenerating}
+                      className="flex-1 min-w-[120px] px-2.5 py-1.5 text-xs font-mono rounded border border-neutral-300 dark:border-neutral-800 bg-white dark:bg-neutral-950"
+                    />
+                    <input
+                      type="text"
+                      value={collabRole}
+                      onChange={(e) => setCollabRole(e.target.value)}
+                      placeholder="Role (e.g. Lead Dev)"
+                      disabled={isGenerating}
+                      className="flex-1 min-w-[120px] px-2.5 py-1.5 text-xs font-mono rounded border border-neutral-300 dark:border-neutral-800 bg-white dark:bg-neutral-950"
+                    />
+                    <input
+                      type="text"
+                      value={collabHandle}
+                      onChange={(e) => setCollabHandle(e.target.value)}
+                      placeholder="@github"
+                      disabled={isGenerating}
+                      className="w-28 px-2.5 py-1.5 text-xs font-mono rounded border border-neutral-300 dark:border-neutral-800 bg-white dark:bg-neutral-950"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddCollaborator}
+                      disabled={isGenerating || !collabName.trim()}
+                      className="px-3 py-1.5 rounded bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 text-xs font-medium hover:opacity-90 disabled:opacity-40"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {collaborators.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {collaborators.map((c, i) => (
+                        <span
+                          key={i}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800 text-[11px] font-mono border border-neutral-200 dark:border-neutral-700"
+                        >
+                          <span className="font-semibold">{c.name}</span>
+                          {c.role && <span className="text-neutral-500">({c.role})</span>}
+                          {c.githubHandle && (
+                            <span className="text-indigo-500">@{c.githubHandle}</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => removeCollaborator(i)}
+                            disabled={isGenerating}
+                            className="text-neutral-400 hover:text-red-500 ml-1"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── REAL-TIME SSE PROGRESS CARD ── */}
         <AnimatePresence>
           {isGenerating && (
             <motion.div
@@ -378,13 +682,11 @@ export function GeneratorForm() {
               transition={{ duration: 0.4, ease: "easeOut" }}
               className="w-full my-4 p-6 sm:p-8 rounded-3xl border-2 border-neutral-300 dark:border-neutral-700 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl text-left shadow-2xl relative overflow-hidden ring-4 ring-neutral-200/50 dark:ring-neutral-800/50"
             >
-              {/* Background Ambient Glow Ring */}
-              <div className="absolute -right-16 -top-16 w-48 h-48 rounded-full bg-gradient-to-br from-neutral-200/40 via-neutral-300/20 to-transparent dark:from-neutral-800/40 dark:via-neutral-700/20 blur-2xl pointer-events-none" />
+              <div className="absolute -right-16 -top-16 w-48 h-48 rounded-full bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-transparent blur-2xl pointer-events-none" />
 
-              {/* Header Info Bar */}
               <div className="flex flex-wrap items-center justify-between gap-4 mb-6 relative z-10">
                 <div className="flex items-center gap-4">
-                  <div className="relative p-3 rounded-2xl bg-neutral-900 dark:bg-neutral-100 text-neutral-100 dark:text-neutral-900 shadow-md">
+                  <div className="relative p-3 rounded-2xl bg-indigo-600 text-white shadow-md">
                     <StageIcon className="w-6 h-6 animate-pulse" />
                     <span className="absolute -top-1 -right-1 flex h-3 w-3">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -395,19 +697,18 @@ export function GeneratorForm() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h4 className="text-base font-extrabold font-mono text-neutral-900 dark:text-neutral-100">
-                        {roundedProgress === 100 ? "README Forged Successfully!" : "Forging Engineering README..."}
+                        {roundedProgress === 100 ? "README Forged Successfully!" : "Forging Documentation..."}
                       </h4>
                       <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-300 dark:border-neutral-700">
                         {activeStageObj.title}
                       </span>
                     </div>
-                    <p className="text-xs font-mono text-neutral-500 dark:text-neutral-400 mt-1">
-                      {activeStageObj.subtitle}
+                    <p className="text-xs font-mono text-indigo-600 dark:text-indigo-400 mt-1 font-medium">
+                      {serverMessage || activeStageObj.subtitle}
                     </p>
                   </div>
                 </div>
 
-                {/* Percentage Ticker & Timer Badge */}
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-300 dark:border-neutral-700 text-xs font-mono text-neutral-600 dark:text-neutral-400">
                     <Timer className="w-3.5 h-3.5 text-neutral-500" />
@@ -422,13 +723,12 @@ export function GeneratorForm() {
                 </div>
               </div>
 
-              {/* Glowing High-Precision Animated Progress Bar */}
+              {/* Progress Bar */}
               <div className="w-full bg-neutral-200 dark:bg-neutral-800 h-4 rounded-full overflow-hidden mb-6 p-0.5 border border-neutral-300 dark:border-neutral-700 relative shadow-inner">
                 <motion.div
-                  className="bg-gradient-to-r from-neutral-800 via-neutral-900 to-black dark:from-neutral-300 dark:via-neutral-100 dark:to-white h-full rounded-full transition-all duration-300 ease-out shadow-md relative"
+                  className="bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-500 h-full rounded-full transition-all duration-300 ease-out shadow-md relative"
                   style={{ width: `${roundedProgress}%` }}
                 >
-                  {/* Shimmer Line Overlay */}
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 dark:via-black/20 to-transparent animate-pulse" />
                 </motion.div>
               </div>
@@ -448,25 +748,26 @@ export function GeneratorForm() {
                         opacity: isCurrent || isCompleted ? 1 : 0.5,
                       }}
                       className={`flex flex-col items-center p-3 rounded-2xl border text-center transition-all ${
-                        isCurrent
-                          ? "bg-neutral-100 dark:bg-neutral-800 border-neutral-600 dark:border-neutral-400 text-neutral-900 dark:text-neutral-100 shadow-md font-bold ring-2 ring-neutral-400/50 dark:ring-neutral-600/50"
-                          : isCompleted
-                          ? "bg-neutral-200/60 dark:bg-neutral-950/80 border-emerald-500/40 text-neutral-800 dark:text-neutral-200"
-                          : "bg-transparent border-neutral-200 dark:border-neutral-800 text-neutral-400"
+                        isCompleted
+                          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400"
+                          : isCurrent
+                          ? "bg-indigo-500/15 border-indigo-500 text-indigo-700 dark:text-indigo-300 shadow-md ring-2 ring-indigo-500/20"
+                          : "bg-neutral-50 dark:bg-neutral-800/40 border-neutral-200 dark:border-neutral-800 text-neutral-400"
                       }`}
                     >
-                      <div className="flex items-center justify-center mb-1.5">
-                        {isCompleted ? (
-                          <div className="p-1 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
-                            <Check className="w-3.5 h-3.5 stroke-[3]" />
-                          </div>
-                        ) : (
-                          <div className={`p-1 rounded-lg ${isCurrent ? "bg-neutral-900 dark:bg-neutral-100 text-neutral-100 dark:text-neutral-900" : "text-neutral-500"}`}>
-                            <StageItemIcon className="w-3.5 h-3.5" />
-                          </div>
-                        )}
+                      <div
+                        className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+                          isCompleted
+                            ? "bg-emerald-500 text-white"
+                            : isCurrent
+                            ? "bg-indigo-600 text-white"
+                            : "bg-neutral-200 dark:bg-neutral-700 text-neutral-500"
+                        }`}
+                      >
+                        {isCompleted ? <Check className="w-4 h-4 stroke-[3]" /> : <StageItemIcon className="w-4 h-4" />}
                       </div>
-                      <span className="text-[11px] font-mono font-semibold leading-tight">{s.subtitle}</span>
+                      <span className="text-[11px] font-mono font-bold leading-tight">{s.title}</span>
+                      <span className="text-[9px] font-mono opacity-80 truncate w-full mt-0.5">{s.subtitle}</span>
                     </motion.div>
                   );
                 })}
@@ -475,201 +776,22 @@ export function GeneratorForm() {
           )}
         </AnimatePresence>
 
-        {/* Metadata & Advanced Config Drawer */}
-        <div className="w-full mt-3 rounded-xl border border-neutral-300 dark:border-neutral-800 bg-neutral-100/80 dark:bg-neutral-900/80 overflow-hidden shadow-sm">
-          <button
-            type="button"
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            className="w-full px-4 py-2.5 flex items-center justify-between text-xs font-mono font-semibold text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
-          >
-            <span className="flex items-center gap-2">
-              <Users className="w-3.5 h-3.5 text-neutral-500" />
-              <span>Advanced Options (Repository Title, Demo Link, License &amp; Team Members)</span>
-            </span>
-            {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </button>
-
-          {showAdvanced && (
-            <div className="p-5 space-y-5 border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950/80">
-              {/* Metadata & License Inputs */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-mono text-neutral-500 dark:text-neutral-400 mb-1.5">Custom Title</label>
-                  <input
-                    type="text"
-                    value={customTitle}
-                    onChange={(e) => setCustomTitle(e.target.value)}
-                    placeholder="e.g. ReadmeForge SaaS"
-                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 rounded-lg text-xs text-neutral-900 dark:text-neutral-200 focus:outline-none focus:border-neutral-500 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-mono text-neutral-500 dark:text-neutral-400 mb-1.5">Team / Company</label>
-                  <input
-                    type="text"
-                    value={teamName}
-                    onChange={(e) => setTeamName(e.target.value)}
-                    placeholder="e.g. Core Engineering"
-                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 rounded-lg text-xs text-neutral-900 dark:text-neutral-200 focus:outline-none focus:border-neutral-500 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-mono text-neutral-500 dark:text-neutral-400 mb-1.5">Live Demo URL</label>
-                  <input
-                    type="text"
-                    value={demoUrl}
-                    onChange={(e) => setDemoUrl(e.target.value)}
-                    placeholder="https://demo.app"
-                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 rounded-lg text-xs text-neutral-900 dark:text-neutral-200 focus:outline-none focus:border-neutral-500 font-mono"
-                  />
-                </div>
-              </div>
-
-              {/* High-Profile License Customization Card */}
-              <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-mono text-neutral-500 dark:text-neutral-400 uppercase tracking-wider flex items-center gap-2">
-                    <span>📜 License Customization &amp; Owner Settings</span>
-                  </h4>
-                  <label className="flex items-center gap-2 text-xs font-mono text-neutral-800 dark:text-neutral-200 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={includeLicense}
-                      onChange={(e) => setIncludeLicense(e.target.checked)}
-                      className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-900 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <span className="font-semibold">Include LICENSE file</span>
-                  </label>
-                </div>
-
-                {includeLicense && (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 rounded-xl bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-800">
-                    <div>
-                      <label className="block text-[11px] font-mono text-neutral-500 dark:text-neutral-400 mb-1">Copyright Holder / Author</label>
-                      <input
-                        type="text"
-                        value={authorName}
-                        onChange={(e) => setAuthorName(e.target.value)}
-                        placeholder="e.g. Bavly-Hamdy"
-                        className="w-full px-3 py-1.5 bg-white dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-lg text-xs text-neutral-900 dark:text-neutral-200 focus:outline-none font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-mono text-neutral-500 dark:text-neutral-400 mb-1">Copyright Year</label>
-                      <input
-                        type="text"
-                        value={copyrightYear}
-                        onChange={(e) => setCopyrightYear(e.target.value)}
-                        placeholder="2026"
-                        className="w-full px-3 py-1.5 bg-white dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-lg text-xs text-neutral-900 dark:text-neutral-200 focus:outline-none font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-mono text-neutral-500 dark:text-neutral-400 mb-1">License Type</label>
-                      <select
-                        value={licenseType}
-                        onChange={(e) => setLicenseType(e.target.value)}
-                        className="w-full px-3 py-1.5 bg-white dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-lg text-xs text-neutral-900 dark:text-neutral-200 focus:outline-none font-mono"
-                      >
-                        <option value="MIT">MIT License (Standard Open Source)</option>
-                        <option value="Apache-2.0">Apache 2.0 License</option>
-                        <option value="GPL-3.0">GNU GPL v3.0</option>
-                      </select>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Add Team Member */}
-              <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4">
-                <h4 className="text-xs font-mono text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-3">
-                  Team Members & Contributors (All-Contributors Grid)
-                </h4>
-
-                <div className="flex flex-col sm:flex-row gap-2 mb-3">
-                  <input
-                    type="text"
-                    value={collabName}
-                    onChange={(e) => setCollabName(e.target.value)}
-                    placeholder="Name (e.g. Bavly Hamdy)"
-                    className="flex-1 px-3 py-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 rounded-lg text-xs text-neutral-900 dark:text-neutral-200 focus:outline-none font-mono"
-                  />
-                  <input
-                    type="text"
-                    value={collabRole}
-                    onChange={(e) => setCollabRole(e.target.value)}
-                    placeholder="Role (e.g. Systems Architect)"
-                    className="flex-1 px-3 py-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 rounded-lg text-xs text-neutral-900 dark:text-neutral-200 focus:outline-none font-mono"
-                  />
-                  <input
-                    type="text"
-                    value={collabHandle}
-                    onChange={(e) => setCollabHandle(e.target.value)}
-                    placeholder="GitHub Handle (e.g. octocat)"
-                    className="flex-1 px-3 py-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-800 rounded-lg text-xs text-neutral-900 dark:text-neutral-200 focus:outline-none font-mono"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddCollaborator}
-                    className="px-4 py-2 bg-neutral-900 dark:bg-neutral-800 hover:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-100 dark:text-neutral-200 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors border border-neutral-700"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Member</span>
-                  </button>
-                </div>
-
-                {/* Team Members List */}
-                {collaborators.length > 0 && (
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    {collaborators.map((c, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center gap-2 bg-neutral-100 dark:bg-neutral-900 px-3 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-800 text-xs font-mono text-neutral-900 dark:text-neutral-200"
-                      >
-                        <span className="font-semibold">{c.name}</span>
-                        <span className="text-[10px] text-neutral-600 dark:text-neutral-400 bg-neutral-200 dark:bg-neutral-800 px-1.5 py-0.5 rounded border border-neutral-300 dark:border-neutral-700">
-                          {c.role}
-                        </span>
-                        {c.githubHandle && (
-                          <span className="text-[10px] text-neutral-500">@{c.githubHandle}</span>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => removeCollaborator(i)}
-                          className="text-neutral-400 hover:text-red-500 transition-colors ml-1"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </form>
-
-      {/* Error Alert */}
-      {error && (
-        <div className="mt-4 w-full p-4 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 text-xs font-mono flex flex-col gap-3">
-          <div className="flex items-start gap-3">
+        {/* Error Alert */}
+        {error && (
+          <div className="w-full p-4 rounded-xl border border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-400 text-xs font-mono flex items-start gap-3">
             <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-            <span className="leading-relaxed">{error}</span>
+            <div className="flex-1">
+              <span className="font-bold">Generation Error: </span>
+              {error}
+              {isAuthError && (
+                <div className="mt-2 text-[11px] text-neutral-700 dark:text-neutral-300">
+                  Tip: Please sign in with your GitHub account using the button in the top navigation bar.
+                </div>
+              )}
+            </div>
           </div>
-          {isAuthError && (
-            <a
-              href="/api/auth/signin"
-              className="self-start inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 text-xs font-semibold hover:opacity-90 transition-opacity"
-            >
-              <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current" aria-hidden="true">
-                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
-              </svg>
-              Sign in with GitHub
-            </a>
-          )}
-        </div>
-      )}
+        )}
+      </form>
     </div>
   );
 }

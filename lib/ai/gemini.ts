@@ -1,12 +1,28 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { RepoDigest, ReadmeGenerationParams } from "@/types/repo-digest";
+import { PERSONA_REGISTRY } from "@/lib/ai/personas";
 
-const apiKey = process.env.GEMINI_API_KEY;
-if (!apiKey) {
-  console.warn("[Gemini AI] Warning: GEMINI_API_KEY environment variable is missing.");
+let _genAI: GoogleGenerativeAI | null = null;
+
+export function getGenAI(): GoogleGenerativeAI {
+  if (!_genAI) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error(
+        "[GEMINI FATAL] GEMINI_API_KEY is not configured. " +
+        "Add it to your .env file."
+      );
+    }
+    _genAI = new GoogleGenerativeAI(apiKey);
+  }
+  return _genAI;
 }
 
-export const genAI = new GoogleGenerativeAI(apiKey || "dummy-key");
+export const genAI = new Proxy({} as GoogleGenerativeAI, {
+  get(_, prop: string | symbol) {
+    return (getGenAI() as any)[prop];
+  },
+});
 
 const CANDIDATE_MODELS = [
   "gemini-3.5-flash-lite",
@@ -138,6 +154,9 @@ export async function generateReadmeFromDigest(
   const treeSample = (digest.treePathsSample ?? []).slice(0, 60).join("\n  ");
 
   // Collaborators
+  const personaKey = params.persona || "ENTERPRISE";
+  const personaConfig = PERSONA_REGISTRY[personaKey] || PERSONA_REGISTRY.ENTERPRISE;
+
   const collabList = collaborators.length > 0
     ? collaborators.map((c) => `  - ${c.name} (${c.role ?? "Contributor"})${c.githubHandle ? ` @${c.githubHandle}` : ""}`).join("\n")
     : "  Community Contributors";
@@ -146,7 +165,10 @@ export async function generateReadmeFromDigest(
 ROLE & MANDATE
 ──────────────
 You are a Principal Software Architect and Lead Technical Writer. Your mandate is to produce a
-WORLD-CLASS, HUMAN-GRADE, HIGH-DENSITY ENTERPRISE README for "${repoTitle}".
+WORLD-CLASS, HUMAN-GRADE, HIGH-DENSITY README for "${repoTitle}" tailored to the "${personaConfig.label}" style.
+
+STYLE & TONE DIRECTIVE:
+${personaConfig.toneDirective}
 
 ════════════════════════════════════════════════════════════════════
 STRICT ZERO-ROBOTIC-FLUFF & ANTI-HALLUCINATION RULES
@@ -159,7 +181,7 @@ RULE 1 · STRICT BAN ON ROBOTIC PLACEHOLDERS
     ❌ "No scripts declared in package.json"
     ❌ "Not specified in repository"
     ❌ "License not specified in repository"
-  INSTEAD: Write substantive, human-grade technical descriptions, scripts, or appropriate CLI/Homework execution guides.
+  INSTEAD: Write substantive, human-grade technical descriptions, scripts, or appropriate CLI/execution guides.
 
 RULE 2 · MULTI-ECOSYSTEM & SCRIPT EXECUTION SUPPORT
   • Python repos (requirements.txt / pyproject.toml / uv.lock): Render exact uv/pip commands.
@@ -168,31 +190,21 @@ RULE 2 · MULTI-ECOSYSTEM & SCRIPT EXECUTION SUPPORT
   • Node.js repos: \`npm install\` and \`npm run dev\` / \`npm start\`.
   • Rust / Go repos: \`cargo run\` / \`go run .\`.
 
-RULE 3 · ADAPTIVE API vs CLI/SCRIPT REFERENCE (SECTION 10)
+RULE 3 · ADAPTIVE API vs CLI/SCRIPT REFERENCE
   • If web API routes exist: Render a full HTTP API Endpoint Matrix.
-  • If NO web API routes exist (CLI tool / Python homework / Data pipeline / Script repo):
-    CONVERT Section 10 into a rich "🖥️ CLI & Script Execution Matrix" or "📋 Module & Homework Execution Guide"
-    listing exact CLI commands for running every script/file in the codebase (e.g., \`python q1.py\`, \`python rag.py\`).
+  • If NO web API routes exist (CLI tool / Python / Data pipeline / Script repo):
+    CONVERT into a rich "🖥️ CLI & Script Execution Matrix"
+    listing exact CLI commands for running every script/file in the codebase (e.g., \`python main.py\`, \`npm run dev\`).
 
-RULE 4 · TECHNOLOGY BADGES & ECOSYSTEM TABLE (SECTION 6)
-  Generate Shields.io badges and full ecosystem table for ALL parsed dependencies:
-${uniqueDeps.map((d) => `    • ${d}`).join("\n")}
+RULE 4 · TECHNOLOGY BADGES & ECOSYSTEM
+  Generate Shields.io badges and ecosystem reference for parsed dependencies:
+${uniqueDeps.slice(0, 15).map((d) => `    • ${d}`).join("\n")}
 
-RULE 5 · HUMAN-GRADE NARRATIVE & CONCEPTUAL FLOWS (SECTION 4)
-  • Include a clean horizontal/vertical ASCII Progression Flow Diagram representing conceptual pipeline steps
-    (e.g., \`Document Parsing ──► Chunking / Vector Index ──► Query Engine ──► LLM Synthesis ──► UI Output\`).
-  • Include a comprehensive Mermaid.js flowchart (graph TD) mapping real modules.
-  • Include a Feature & Architecture Comparison Table (e.g., "Plain RAG vs Agentic RAG" or "Implementation Comparison").
+RULE 5 · HUMAN-GRADE NARRATIVE & VISUAL CLARITY
+  • Include a clean progression flow diagram or Mermaid.js flowchart if relevant to this persona.
+  • Embed preview image if detected: \`![Preview](${assetPaths[0] || "assets/preview.png"})\`.
 
-RULE 6 · DETAILED MODULE WALKTHROUGHS (SECTION 9)
-  Write deep, technical explanations for EVERY module/script listed in RULE 6 below.
-  Detail exact operational mechanics (parameters, chunking logic, models used, exported functions, and data transformations).
-
-RULE 7 · VISUAL ASSETS & DEMO EMBEDS (SECTION 1)
-  Asset images detected in repository: ${assetPaths.length > 0 ? assetPaths.join(", ") : "assets/preview.png"}
-  Embed markdown images directly where applicable: \`![Preview](${assetPaths[0] || "assets/preview.png"})\`.
-
-RULE 8 · BANNED FLUFF WORDS
+RULE 6 · BANNED FLUFF WORDS
   Do NOT use vacuous buzzwords: "blazing fast", "revolutionary", "cutting-edge", "unmatched performance".
   Use precise, architectural, human-grade technical prose.
 
@@ -204,6 +216,7 @@ ${JSON.stringify(digest, null, 2)}
 ADDITIONAL METADATA
 ────────────────────
 Custom Title     : ${repoTitle}
+Target Persona   : ${personaConfig.label} (${personaConfig.description})
 Primary Language : ${digest.techStack.language}
 Team/Org         : ${teamName || "Engineering Team"}
 Live Demo URL    : ${demoUrl || "N/A"}
@@ -211,81 +224,59 @@ Collaborators    :
 ${collabList}
 
 ════════════════════════════════════════════════════════════════════
-MANDATORY ENTERPRISE README STRUCTURE (14 SECTIONS)
+MANDATORY README SECTIONS FOR ${personaConfig.label.toUpperCase()} (${personaConfig.maxSections} SECTIONS)
 ════════════════════════════════════════════════════════════════════
-
-1. 🏷️ HERO HEADER
-   • # ${repoTitle}
-   • 1-sentence human technical tagline based on: "${repoDescription}"
-   • Shields.io badges for detected tech stack (style=for-the-badge)
-   • Embedded preview image: \`![Preview](${assetPaths[0] || "assets/preview.png"})\`
-
-2. 📋 TABLE OF CONTENTS
-   • Anchored links to all 14 sections below
-
-3. 🔍 OVERVIEW & ARCHITECTURAL INTENT
-   • 2–3 detailed paragraphs explaining what the project builds, the underlying engineering problem, and design motivation.
-
-4. 📌 ARCHITECTURE & WORKFLOW
-   • ASCII Pipeline Flow Diagram (conceptual progression)
-   • Mermaid.js Flowchart (\`\`\`mermaid graph TD ... \`\`\`)
-   • Architectural Decision Records (ADR) or Feature Comparison Table (e.g., Plain RAG vs Agentic RAG / Module Trade-offs)
-
-5. ✨ CORE FEATURES & CAPABILITIES
-   • High-density bulleted list detailing every key capability backed by actual code modules.
-
-6. 🛠️ TECHNOLOGIES & ECOSYSTEM MATRIX
-   • Full Markdown Table listing parsed dependencies:
-     | Technology | Purpose | Category |
-     (Populate with all detected libraries like ${uniqueDeps.slice(0, 8).join(", ")})
-
-7. 📋 REQUIREMENTS & 🚀 INSTALLATION GUIDE
-   • Prerequisites table (Python/Node version, Package Manager like uv/pip/npm)
-   • Environment Configuration (\`.env\` setup block with comments)
-   • Exact Install & Run commands:
-     \`\`\`bash
+${
+  personaKey === "MINIMALIST"
+    ? `1. 🏷️ HERO HEADER: # ${repoTitle}, 1-sentence tagline, badges.
+2. 🔍 OVERVIEW: 1 crisp, high-impact paragraph explaining what it does.
+3. 🚀 REQUIREMENTS & QUICKSTART: Prerequisites + exact copy-pasteable bash commands to run:
+\`\`\`bash
 ${declaredScripts}
-     \`\`\`
-
-8. 📁 PROJECT STRUCTURE
-   • ASCII file tree with inline descriptions for key files:
-     ${treeSample}
-
-9. 🧩 MAIN MODULES & TECHNICAL BREAKDOWN
-   • Dedicated \`### <module_name>\` for EVERY module in the digest.
-   • Detail exact operational mechanics, exported functions, parameters, and algorithms.
-   • Include an Implementation Comparison Table at the end of this section.
-
-10. 🔌 API REFERENCE OR 🖥️ SCRIPT EXECUTION MATRIX
-    • If HTTP API endpoints exist → Full API Table (| Method | Endpoint | Auth | Description |).
-    • If Script / CLI repo → Full Script Execution Matrix (| Script / Command | Purpose | Input / Args | Output |).
-
-11. 🛡️ SECURITY & CONFIGURATION ISOLATION
-    • Details on environment variable management, API key protection, input validation, and secure execution boundaries.
-
-12. 🚀 DEPLOYMENT & ENVIRONMENT MATRIX
-    • Table listing execution targets (Local Dev, Docker, Staging, Cloud/Production).
-
-13. 👥 AUTHORS & CONTRIBUTORS
-    • Contributor table featuring GitHub dynamic avatars or team roles.
-
-14. 📄 LICENSE
-    Output the complete pro-grade License section:
-    ## 📄 License
-    This project is licensed under the **${licenseText} License** — see the [LICENSE](./LICENSE) file for full details.
-
-    [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
-
-    ### Summary of Rights & Permissions
-    | 🟢 Permissions | 🟡 Conditions | 🔴 Limitations |
-    | :--- | :--- | :--- |
-    | **Commercial use** | **License and copyright notice** | **Liability** |
-    | **Modification** | | **Warranty** |
-    | **Distribution** | | |
-    | **Private use** | | |
-
-    ---
-    > **Copyright (c) ${effectiveYear} ${effectiveAuthor}**
+\`\`\`
+4. 📄 LICENSE: Standard ${licenseText} notice for ${effectiveYear} ${effectiveAuthor}.`
+    : personaKey === "PORTFOLIO"
+    ? `1. 🏷️ HERO HEADER: # ${repoTitle}, demo tagline, tech badges, live demo link (${demoUrl || "Live Demo"}), preview image.
+2. 🔍 PROJECT OVERVIEW & HIGHLIGHTS: Compelling narrative of the problem solved, engineering decisions, and core features.
+3. ✨ KEY CAPABILITIES & DEMO SHOWCASE: High-density bulleted achievements backed by real code modules.
+4. 🛠️ TECH STACK & ARCHITECTURE: Shields.io badges + parsed dependencies table.
+5. 🚀 LOCAL SETUP & REPRODUCTION: Prerequisites and exact run scripts:
+\`\`\`bash
+${declaredScripts}
+\`\`\`
+6. 📁 REPOSITORY STRUCTURE: Clean ASCII directory tree (${treeSample.split("\n").slice(0, 20).join("\n")}).
+7. 👥 AUTHOR & CREDITS: Showcase of the author/team and collaborators.
+8. 📄 LICENSE: Official ${licenseText} license block.`
+    : personaKey === "OPEN_SOURCE"
+    ? `1. 🏷️ HERO HEADER: # ${repoTitle}, tagline, build/license badges, preview image.
+2. 📋 TABLE OF CONTENTS: Anchored links to all sections.
+3. 🔍 OVERVIEW & VISION: Project goals and who it is for.
+4. ✨ FEATURES: Modular capability list.
+5. 🛠️ TECH STACK: Dependency matrix.
+6. 🚀 GETTING STARTED: Prerequisites, installation, running tests, local environment setup.
+7. 📁 PROJECT STRUCTURE: Annotated ASCII directory tree.
+8. 🔌 API / CLI REFERENCE: Detailed matrix of endpoints or CLI script execution.
+9. 🤝 CONTRIBUTING: Clear guide on how to contribute, code style, opening issues, and pull requests.
+10. 👥 CONTRIBUTORS: Recognition of contributors and maintainers.
+11. 📄 LICENSE: ${licenseText} license with summary table.`
+    : `1. 🏷️ HERO HEADER: # ${repoTitle}, 1-sentence tagline, Shields.io badges, preview image: ![Preview](${assetPaths[0] || "assets/preview.png"})
+2. 📋 TABLE OF CONTENTS: Anchored links to all 14 sections.
+3. 🔍 OVERVIEW & ARCHITECTURAL INTENT: 2-3 detailed paragraphs explaining the engineering problem and design motivation.
+4. 📌 ARCHITECTURE & WORKFLOW: ASCII progression flow diagram, Mermaid flowchart (graph TD), and ADR / Trade-offs table.
+5. ✨ CORE FEATURES & CAPABILITIES: High-density bulleted list backed by code modules.
+6. 🛠️ TECHNOLOGIES & ECOSYSTEM MATRIX: Full table listing parsed dependencies.
+7. 📋 REQUIREMENTS & 🚀 INSTALLATION GUIDE: Prerequisites, .env setup, exact commands:
+\`\`\`bash
+${declaredScripts}
+\`\`\`
+8. 📁 PROJECT STRUCTURE: ASCII file tree with inline descriptions (${treeSample}).
+9. 🧩 MAIN MODULES & TECHNICAL BREAKDOWN: Dedicated ### for EVERY module (${digest.modules.map((m) => m.name).join(", ")}).
+10. 🔌 API REFERENCE OR 🖥️ SCRIPT EXECUTION MATRIX: Full endpoints or CLI script table.
+11. 🛡️ SECURITY & CONFIGURATION ISOLATION: Environment secrets, input validation, boundaries.
+12. 🚀 DEPLOYMENT & ENVIRONMENT MATRIX: Execution targets (Dev, Docker, Staging, Cloud).
+13. 👥 AUTHORS & CONTRIBUTORS: Contributor table.
+14. 📄 LICENSE: Professional ${licenseText} section with permissions/limitations table and (c) ${effectiveYear} ${effectiveAuthor}.`
+}
 
 ════════════════════════════════════════════════════════════════════
 OUTPUT FORMAT
@@ -293,15 +284,13 @@ OUTPUT FORMAT
 Return ONLY valid GitHub-Flavored Markdown (GFM). Start directly with the # H1 heading.
 `;
 
-  const prompt = `Generate the complete, high-density, human-grade Enterprise README.md for "${repoTitle}".
+  const prompt = `Generate the complete, high-density, human-grade ${personaConfig.label} README.md for "${repoTitle}".
 
 CRITICAL INSTRUCTIONS:
 1. Ban ALL robotic placeholders ("Implementation details not determinable", "N/A", etc.).
-2. Include Python/Node multi-ecosystem install & run commands (uv sync, pip install, python <script>.py).
-3. Include ASCII progression flow diagram AND Mermaid flowchart.
-4. Include rich technical walkthroughs in Section 9 for EVERY module (${digest.modules.map((m) => m.name).slice(0, 5).join(", ")}).
-5. Convert Section 10 to a Script Execution Matrix if no HTTP API endpoints exist.
-6. Start directly with the # H1 heading.`;
+2. Include multi-ecosystem install & run commands.
+3. Align strictly with the ${personaConfig.label} section guidelines (${personaConfig.maxSections} sections).
+4. Start directly with the # H1 heading.`;
 
   return await generateContentWithFallback(prompt, masterSystemPrompt);
 }

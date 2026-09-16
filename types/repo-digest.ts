@@ -28,8 +28,8 @@ export interface ApiRoute {
 export interface CollaboratorInfo {
   id?: string;
   name: string;
-  role: string | null;
-  githubHandle: string | null;
+  role?: string | null;
+  githubHandle?: string | null;
   avatarUrl?: string | null;
   commitCount?: number | null;
   socialLinks?: Record<string, string> | null;

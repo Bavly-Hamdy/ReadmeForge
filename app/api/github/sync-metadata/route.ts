@@ -4,6 +4,8 @@ import { authOptions } from "@/lib/auth";
 import { getOctokitClient } from "@/lib/github/octokit";
 import { updateRepoDetails, createInitialRelease } from "@/lib/github/metadata";
 
+import { syncMetadataSchema } from "@/lib/validation/generate-schema";
+
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
@@ -22,31 +24,25 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
+    const parsed = syncMetadataSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", details: parsed.error.flatten() },
+        { status: 400 }
+      );
+    }
+
     const {
       repoUrl,
       description,
       homepage,
-      topics = [],
-      publishRelease = false,
+      topics,
+      publishRelease,
       releaseNotes,
-      tagName = "v1.0.0",
-    } = body;
+      tagName,
+    } = parsed.data;
 
-    if (!repoUrl || typeof repoUrl !== "string") {
-      return NextResponse.json(
-        { error: "A valid GitHub repository URL is required." },
-        { status: 400 }
-      );
-    }
-
-    const match = repoUrl.match(/github\.com\/([^/]+)\/([^/#?]+)/);
-    if (!match) {
-      return NextResponse.json(
-        { error: "Invalid GitHub URL format." },
-        { status: 400 }
-      );
-    }
-
+    const match = repoUrl.match(/github\.com\/([^/]+)\/([^/#?]+)/)!;
     const owner = match[1];
     const repo = match[2].replace(/\.git$/, "");
     const octokit = getOctokitClient(userAccessToken);
