@@ -324,7 +324,7 @@ export function GeneratorForm() {
                 disabled={isGenerating}
                 className={`flex flex-col text-left p-3.5 rounded-xl border transition-all duration-200 relative overflow-hidden ${
                   isSelected
-                    ? "border-indigo-500 bg-indigo-500/10 dark:bg-indigo-500/15 shadow-sm ring-1 ring-indigo-500"
+                    ? "border-neutral-900 dark:border-white bg-neutral-100 dark:bg-neutral-800 shadow-sm ring-1 ring-neutral-900 dark:ring-white"
                     : "border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/50 hover:border-neutral-300 dark:hover:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-900"
                 } ${isGenerating ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
               >
@@ -332,14 +332,14 @@ export function GeneratorForm() {
                   <div
                     className={`w-7 h-7 rounded-lg flex items-center justify-center ${
                       isSelected
-                        ? "bg-indigo-600 text-white"
+                        ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
                         : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
                     }`}
                   >
                     <IconComponent className="w-3.5 h-3.5" />
                   </div>
                   {isSelected && (
-                    <span className="w-4 h-4 rounded-full bg-indigo-500 text-white flex items-center justify-center text-[10px]">
+                    <span className="w-4 h-4 rounded-full bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 flex items-center justify-center text-[10px]">
                       <Check className="w-2.5 h-2.5" />
                     </span>
                   )}
@@ -417,13 +417,13 @@ export function GeneratorForm() {
             <button
               type="submit"
               disabled={isGenerating}
-              className="relative overflow-hidden rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 px-6 py-3 font-semibold text-white text-sm shadow-lg transition-all duration-300 disabled:cursor-not-allowed min-w-[220px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2"
+              className="relative overflow-hidden rounded-xl bg-neutral-900 hover:bg-neutral-800 active:bg-black dark:bg-white dark:hover:bg-neutral-100 dark:active:bg-neutral-200 px-6 py-3 font-semibold text-white dark:text-neutral-950 text-sm shadow-md transition-all duration-300 disabled:cursor-not-allowed min-w-[220px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-2"
             >
               {isGenerating && (
                 <span
                   aria-hidden="true"
                   className={`absolute inset-y-0 left-0 transition-all duration-300 ease-out ${
-                    isComplete ? "bg-emerald-500/40" : "bg-indigo-500/50"
+                    isComplete ? "bg-emerald-500/40" : "bg-neutral-700/40 dark:bg-neutral-300/40"
                   }`}
                   style={{ width: `${roundedProgress}%` }}
                 />
@@ -433,7 +433,7 @@ export function GeneratorForm() {
                 {isGenerating ? (
                   isComplete ? (
                     <span className="flex items-center justify-center gap-2 w-full">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-300 flex-shrink-0" />
+                      <CheckCircle2 className="h-4 w-4 text-emerald-400 flex-shrink-0" />
                       <span>README Generated!</span>
                     </span>
                   ) : (
@@ -471,12 +471,12 @@ export function GeneratorForm() {
               <button
                 type="submit"
                 disabled={isGenerating}
-                className="w-full relative overflow-hidden rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 px-6 py-3 font-semibold text-white text-sm shadow-lg transition-all duration-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full relative overflow-hidden rounded-xl bg-neutral-900 hover:bg-neutral-800 active:bg-black dark:bg-white dark:hover:bg-neutral-100 dark:active:bg-neutral-200 px-6 py-3 font-semibold text-white dark:text-neutral-950 text-sm shadow-md transition-all duration-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isGenerating && (
                   <span
                     aria-hidden="true"
-                    className="absolute inset-y-0 left-0 bg-indigo-500/50 transition-all duration-300 ease-out"
+                    className="absolute inset-y-0 left-0 bg-neutral-700/40 dark:bg-neutral-300/40 transition-all duration-300 ease-out"
                     style={{ width: `${roundedProgress}%` }}
                   />
                 )}
@@ -578,7 +578,7 @@ export function GeneratorForm() {
                       checked={includeLicense}
                       onChange={(e) => setIncludeLicense(e.target.checked)}
                       disabled={isGenerating}
-                      className="rounded border-neutral-300 text-indigo-600 focus:ring-indigo-500"
+                      className="rounded border-neutral-300 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 focus:ring-neutral-500"
                     />
                     <span className="text-xs font-mono text-neutral-700 dark:text-neutral-300">
                       Generate official LICENSE file (MIT)
@@ -651,7 +651,7 @@ export function GeneratorForm() {
                           <span className="font-semibold">{c.name}</span>
                           {c.role && <span className="text-neutral-500">({c.role})</span>}
                           {c.githubHandle && (
-                            <span className="text-indigo-500">@{c.githubHandle}</span>
+                            <span className="text-neutral-900 dark:text-neutral-100 font-bold">@{c.githubHandle}</span>
                           )}
                           <button
                             type="button"
@@ -682,11 +682,11 @@ export function GeneratorForm() {
               transition={{ duration: 0.4, ease: "easeOut" }}
               className="w-full my-4 p-6 sm:p-8 rounded-3xl border-2 border-neutral-300 dark:border-neutral-700 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl text-left shadow-2xl relative overflow-hidden ring-4 ring-neutral-200/50 dark:ring-neutral-800/50"
             >
-              <div className="absolute -right-16 -top-16 w-48 h-48 rounded-full bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-transparent blur-2xl pointer-events-none" />
+              <div className="absolute -right-16 -top-16 w-48 h-48 rounded-full bg-gradient-to-br from-neutral-300/15 via-neutral-200/5 to-transparent dark:from-neutral-700/15 dark:via-neutral-800/5 blur-2xl pointer-events-none" />
 
               <div className="flex flex-wrap items-center justify-between gap-4 mb-6 relative z-10">
                 <div className="flex items-center gap-4">
-                  <div className="relative p-3 rounded-2xl bg-indigo-600 text-white shadow-md">
+                  <div className="relative p-3 rounded-2xl bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 shadow-md">
                     <StageIcon className="w-6 h-6 animate-pulse" />
                     <span className="absolute -top-1 -right-1 flex h-3 w-3">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -703,7 +703,7 @@ export function GeneratorForm() {
                         {activeStageObj.title}
                       </span>
                     </div>
-                    <p className="text-xs font-mono text-indigo-600 dark:text-indigo-400 mt-1 font-medium">
+                    <p className="text-xs font-mono text-neutral-600 dark:text-neutral-400 mt-1 font-medium">
                       {serverMessage || activeStageObj.subtitle}
                     </p>
                   </div>
@@ -726,7 +726,7 @@ export function GeneratorForm() {
               {/* Progress Bar */}
               <div className="w-full bg-neutral-200 dark:bg-neutral-800 h-4 rounded-full overflow-hidden mb-6 p-0.5 border border-neutral-300 dark:border-neutral-700 relative shadow-inner">
                 <motion.div
-                  className="bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-500 h-full rounded-full transition-all duration-300 ease-out shadow-md relative"
+                  className="bg-gradient-to-r from-neutral-800 via-neutral-900 to-black dark:from-neutral-300 dark:via-neutral-100 dark:to-white h-full rounded-full transition-all duration-300 ease-out shadow-md relative"
                   style={{ width: `${roundedProgress}%` }}
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 dark:via-black/20 to-transparent animate-pulse" />
@@ -751,7 +751,7 @@ export function GeneratorForm() {
                         isCompleted
                           ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400"
                           : isCurrent
-                          ? "bg-indigo-500/15 border-indigo-500 text-indigo-700 dark:text-indigo-300 shadow-md ring-2 ring-indigo-500/20"
+                          ? "bg-neutral-900/10 dark:bg-white/10 border-neutral-900 dark:border-white text-neutral-950 dark:text-white shadow-md ring-1 ring-neutral-900/20 dark:ring-white/20"
                           : "bg-neutral-50 dark:bg-neutral-800/40 border-neutral-200 dark:border-neutral-800 text-neutral-400"
                       }`}
                     >
@@ -760,7 +760,7 @@ export function GeneratorForm() {
                           isCompleted
                             ? "bg-emerald-500 text-white"
                             : isCurrent
-                            ? "bg-indigo-600 text-white"
+                            ? "bg-neutral-900 dark:bg-white text-white dark:text-neutral-900"
                             : "bg-neutral-200 dark:bg-neutral-700 text-neutral-500"
                         }`}
                       >

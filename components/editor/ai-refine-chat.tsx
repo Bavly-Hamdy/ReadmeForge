@@ -57,10 +57,10 @@ export function AIRefineChat() {
   };
 
   return (
-    <div className="w-full mt-4 p-4 rounded-2xl border border-indigo-500/30 bg-gradient-to-r from-indigo-500/5 via-purple-500/5 to-transparent backdrop-blur-md shadow-sm">
+    <div className="w-full mt-4 p-4 rounded-2xl border border-neutral-300 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-900/60 backdrop-blur-md shadow-sm">
       <div className="flex items-center justify-between gap-2 mb-2.5">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center">
+          <div className="w-6 h-6 rounded-lg bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 flex items-center justify-center">
             <Sparkles className="w-3.5 h-3.5" />
           </div>
           <span className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
@@ -95,7 +95,7 @@ export function AIRefineChat() {
               setInstruction(prompt);
               handleRefine(prompt);
             }}
-            className="px-2.5 py-1 text-[11px] rounded-full border border-indigo-200 dark:border-indigo-900/60 bg-white/80 dark:bg-neutral-900/80 text-indigo-700 dark:text-indigo-300 hover:border-indigo-400 dark:hover:border-indigo-700 transition-colors disabled:opacity-50"
+            className="px-2.5 py-1 text-[11px] rounded-full border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:border-neutral-900 dark:hover:border-white hover:text-neutral-950 dark:hover:text-white transition-colors disabled:opacity-50"
           >
             + {prompt}
           </button>
@@ -117,14 +117,14 @@ export function AIRefineChat() {
             onChange={(e) => setInstruction(e.target.value)}
             placeholder="e.g., Rewrite the Installation guide using Docker Compose, or add an API auth section..."
             disabled={isLoading}
-            className="w-full pl-3 pr-10 py-2 text-xs font-mono rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+            className="w-full pl-3 pr-10 py-2 text-xs font-mono rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 focus:outline-none focus:border-neutral-900 dark:focus:border-white disabled:opacity-50"
           />
         </div>
 
         <button
           type="submit"
           disabled={isLoading || !instruction.trim()}
-          className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-4 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-200 text-white dark:text-neutral-950 text-xs font-medium transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
         >
           {isLoading ? (
             <>

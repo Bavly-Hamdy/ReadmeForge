@@ -195,7 +195,7 @@ export function ReadmePreview() {
               onClick={() => setActiveTab("edit")}
               className={`px-3 py-1 rounded-md text-xs font-mono font-medium flex items-center gap-1.5 transition-colors ${
                 activeTab === "edit"
-                  ? "bg-indigo-600 text-white shadow-sm font-bold"
+                  ? "bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 shadow-sm font-bold"
                   : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200"
               }`}
             >
@@ -219,7 +219,7 @@ export function ReadmePreview() {
           {repoUrl && (
             <button
               onClick={() => setPushModalOpen(true)}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 transition-colors shadow-sm active:scale-95"
+              className="px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-neutral-900 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 transition-colors shadow-sm active:scale-95"
             >
               <GitCommit className="w-3.5 h-3.5" />
               <span>Push to GitHub</span>
@@ -255,7 +255,7 @@ export function ReadmePreview() {
             <button
               onClick={handleDownloadBoth}
               title="Download both README.md & LICENSE files"
-              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 transition-colors shadow-sm active:scale-95"
+              className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 dark:bg-neutral-200 dark:hover:bg-white text-white dark:text-neutral-900 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 transition-colors shadow-sm active:scale-95"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Download Both</span>
@@ -335,7 +335,7 @@ export function ReadmePreview() {
                         onClick={() => setPushMode("pull-request")}
                         className={`p-3 rounded-xl border text-left text-xs font-mono transition-all flex flex-col gap-1 ${
                           pushMode === "pull-request"
-                            ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500"
+                            ? "border-neutral-900 dark:border-white bg-neutral-100 dark:bg-neutral-800 text-neutral-950 dark:text-white ring-1 ring-neutral-900 dark:ring-white"
                             : "border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50 text-neutral-700 dark:text-neutral-300"
                         }`}
                       >
@@ -353,7 +353,7 @@ export function ReadmePreview() {
                         onClick={() => setPushMode("direct-commit")}
                         className={`p-3 rounded-xl border text-left text-xs font-mono transition-all flex flex-col gap-1 ${
                           pushMode === "direct-commit"
-                            ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500"
+                            ? "border-neutral-900 dark:border-white bg-neutral-100 dark:bg-neutral-800 text-neutral-950 dark:text-white ring-1 ring-neutral-900 dark:ring-white"
                             : "border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50 text-neutral-700 dark:text-neutral-300"
                         }`}
                       >
@@ -381,7 +381,7 @@ export function ReadmePreview() {
                           ? "docs: synchronize README.md and documentation via ReadmeForge"
                           : "docs: update README.md via ReadmeForge"
                       }
-                      className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 focus:outline-none focus:border-emerald-500"
+                      className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 focus:outline-none focus:border-neutral-500"
                     />
                   </div>
 
@@ -404,7 +404,7 @@ export function ReadmePreview() {
                     <button
                       type="submit"
                       disabled={isPushing}
-                      className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-mono font-semibold flex items-center gap-1.5 disabled:opacity-50"
+                      className="px-5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-neutral-950 text-xs font-mono font-semibold flex items-center gap-1.5 disabled:opacity-50"
                     >
                       {isPushing ? (
                         <>
