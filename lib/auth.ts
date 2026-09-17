@@ -34,6 +34,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.accessToken = token.accessToken as string;
         session.user.username = token.username as string;
+        session.user.githubId = token.githubId as string;
       }
       return session;
     },

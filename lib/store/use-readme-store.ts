@@ -45,6 +45,13 @@ interface ReadmeStore {
   setError: (error: string | null) => void;
   pushEditHistory: (content: string) => void;
   undoEdit: () => void;
+  setRepoUrlSilent: (url: string) => void;
+  loadFromHistory: (data: {
+    markdown: string;
+    repoUrl: string;
+    persona?: string;
+    license?: string | null;
+  }) => void;
   reset: () => void;
 }
 
@@ -117,6 +124,17 @@ export const useReadmeStore = create<ReadmeStore>((set) => ({
         editHistory: state.editHistory.slice(0, -1),
       };
     }),
+  setRepoUrlSilent: (repoUrl) => set({ repoUrl }),
+  loadFromHistory: ({ markdown, repoUrl, persona, license }) =>
+    set((state) => ({
+      generatedMarkdown: markdown,
+      repoUrl,
+      persona: persona || state.persona,
+      generatedLicense: license !== undefined ? license : state.generatedLicense,
+      error: null,
+      isGenerating: false,
+      editHistory: [],
+    })),
   reset: () =>
     set({
       theme: "dark",

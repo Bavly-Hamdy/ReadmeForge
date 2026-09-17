@@ -1,15 +1,17 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { Terminal, Layers, ShieldCheck, LogOut, Github, Code2, FolderGit2, Sun, Moon } from "lucide-react";
+import { Terminal, Layers, ShieldCheck, LogOut, Github, Code2, FolderGit2, Sun, Moon, Clock } from "lucide-react";
 import { GeneratorForm } from "@/components/dashboard/generator-form";
 import { ReadmePreview } from "@/components/editor/readme-preview";
+import { HistoryDrawer } from "@/components/dashboard/history-drawer";
 import { useReadmeStore } from "@/lib/store/use-readme-store";
 
 export default function Home() {
   const { data: session, status } = useSession();
   const { theme, toggleTheme } = useReadmeStore();
+  const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
 
   // Sync theme to root html element class
   useEffect(() => {
@@ -43,11 +45,21 @@ export default function Home() {
             ReadmeForge
           </span>
           <span className="text-[10px] font-mono uppercase text-neutral-500 bg-neutral-100 dark:bg-neutral-900 px-2 py-0.5 rounded border border-neutral-300 dark:border-neutral-800">
-            v1.0
+            v2.0
           </span>
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Project History Button */}
+          <button
+            onClick={() => setIsHistoryOpen(true)}
+            className="p-2 rounded-lg bg-neutral-100 dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 border border-neutral-300 dark:border-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-all active:scale-95 flex items-center gap-1.5"
+            title="Open Project History"
+          >
+            <Clock className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
+            <span className="text-xs font-mono hidden sm:inline">History</span>
+          </button>
+
           {/* Theme Toggle Button */}
           <button
             onClick={toggleTheme}
@@ -164,6 +176,12 @@ export default function Home() {
       <footer className="w-full border-t border-neutral-200 dark:border-neutral-900 py-6 text-center text-xs text-neutral-500 font-mono">
         ReadmeForge &copy; 2026 — Minimalism Engineering Documentation
       </footer>
+
+      {/* Slide-out History Drawer */}
+      <HistoryDrawer
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+      />
     </div>
   );
 }

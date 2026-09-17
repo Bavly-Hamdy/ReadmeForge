@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
+import JSZip from "jszip";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Check,
@@ -19,6 +20,8 @@ import {
   Loader2,
   AlertCircle,
   X,
+  ChevronDown,
+  Archive,
 } from "lucide-react";
 import { useReadmeStore } from "@/lib/store/use-readme-store";
 import { MermaidDiagram } from "./mermaid-diagram";
@@ -52,6 +55,28 @@ export function ReadmePreview() {
   } | null>(null);
   const [pushError, setPushError] = useState<string | null>(null);
 
+  // Export menu & ZIP state
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [isZipping, setIsZipping] = useState(false);
+  const [copiedReadme, setCopiedReadme] = useState(false);
+  const [copiedLicense, setCopiedLicense] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close export menu on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    };
+    if (exportMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [exportMenuOpen]);
+
   if (!generatedMarkdown) return null;
 
   const currentContent = activeFile === "readme" ? generatedMarkdown : generatedLicense || "";
@@ -60,6 +85,16 @@ export function ReadmePreview() {
     await navigator.clipboard.writeText(currentContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const getRepoName = () => {
+    if (!repoUrl) return "readmeforge";
+    try {
+      const parts = repoUrl.trim().replace(/\/+$/, "").split("/");
+      return parts[parts.length - 1] || "readmeforge";
+    } catch {
+      return "readmeforge";
+    }
   };
 
   const downloadFile = (content: string, filename: string) => {
@@ -79,12 +114,57 @@ export function ReadmePreview() {
     downloadFile(currentContent, filename);
   };
 
-  const handleDownloadBoth = () => {
-    if (generatedMarkdown) downloadFile(generatedMarkdown, "README.md");
-    if (generatedLicense) {
-      setTimeout(() => {
-        downloadFile(generatedLicense, "LICENSE");
-      }, 300);
+  const handleDownloadReadme = () => {
+    if (!generatedMarkdown) return;
+    downloadFile(generatedMarkdown, "README.md");
+    setExportMenuOpen(false);
+  };
+
+  const handleDownloadLicense = () => {
+    if (!generatedLicense) return;
+    downloadFile(generatedLicense, "LICENSE");
+    setExportMenuOpen(false);
+  };
+
+  const handleCopyReadme = async () => {
+    if (!generatedMarkdown) return;
+    await navigator.clipboard.writeText(generatedMarkdown);
+    setCopiedReadme(true);
+    setTimeout(() => setCopiedReadme(false), 2000);
+  };
+
+  const handleCopyLicense = async () => {
+    if (!generatedLicense) return;
+    await navigator.clipboard.writeText(generatedLicense);
+    setCopiedLicense(true);
+    setTimeout(() => setCopiedLicense(false), 2000);
+  };
+
+  const handleDownloadZip = async () => {
+    setIsZipping(true);
+    try {
+      const zip = new JSZip();
+      if (generatedMarkdown) {
+        zip.file("README.md", generatedMarkdown);
+      }
+      if (generatedLicense) {
+        zip.file("LICENSE", generatedLicense);
+      }
+      const content = await zip.generateAsync({ type: "blob" });
+      const repoName = getRepoName();
+      const url = URL.createObjectURL(content);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${repoName}-docs.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("ZIP creation failed:", err);
+    } finally {
+      setIsZipping(false);
+      setExportMenuOpen(false);
     }
   };
 
@@ -243,24 +323,118 @@ export function ReadmePreview() {
             )}
           </button>
 
-          <button
-            onClick={handleDownloadActive}
-            className="px-3 py-1.5 bg-neutral-900 dark:bg-neutral-100 hover:bg-neutral-800 dark:hover:bg-white text-neutral-100 dark:text-neutral-900 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 transition-colors shadow-sm active:scale-95"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Download</span>
-          </button>
-
-          {generatedLicense && (
+          {/* Export Suite Dropdown */}
+          <div className="relative" ref={exportMenuRef}>
             <button
-              onClick={handleDownloadBoth}
-              title="Download both README.md & LICENSE files"
-              className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 dark:bg-neutral-200 dark:hover:bg-white text-white dark:text-neutral-900 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 transition-colors shadow-sm active:scale-95"
+              onClick={() => setExportMenuOpen(!exportMenuOpen)}
+              className="px-3 py-1.5 bg-neutral-900 dark:bg-neutral-100 hover:bg-neutral-800 dark:hover:bg-white text-neutral-100 dark:text-neutral-900 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+              title="Export Documentation Suite"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Download Both</span>
+              <span>Export</span>
+              <ChevronDown
+                className={`w-3 h-3 transition-transform duration-200 ${
+                  exportMenuOpen ? "rotate-180" : ""
+                }`}
+              />
             </button>
-          )}
+
+            <AnimatePresence>
+              {exportMenuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 6 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 6 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                  className="absolute right-0 mt-2 w-60 rounded-xl border border-neutral-300 dark:border-neutral-800 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl shadow-2xl z-50 p-1.5 font-mono text-xs text-neutral-800 dark:text-neutral-200"
+                >
+                  <div className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
+                    File Downloads
+                  </div>
+
+                  <button
+                    onClick={handleDownloadReadme}
+                    className="w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400" />
+                      <span>README.md</span>
+                    </div>
+                    <span className="text-[10px] text-neutral-400">.md</span>
+                  </button>
+
+                  {generatedLicense && (
+                    <button
+                      onClick={handleDownloadLicense}
+                      className="w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors text-left"
+                    >
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-3.5 h-3.5 text-amber-500" />
+                        <span>LICENSE</span>
+                      </div>
+                      <span className="text-[10px] text-amber-500 font-bold">MIT</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={handleDownloadZip}
+                    disabled={isZipping}
+                    className="w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors text-left disabled:opacity-50"
+                  >
+                    <div className="flex items-center gap-2">
+                      {isZipping ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-neutral-400" />
+                      ) : (
+                        <Archive className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400" />
+                      )}
+                      <span>Download All as ZIP</span>
+                    </div>
+                    <span className="text-[10px] text-neutral-400">.zip</span>
+                  </button>
+
+                  <div className="my-1.5 border-t border-neutral-200 dark:border-neutral-800" />
+
+                  <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
+                    Clipboard
+                  </div>
+
+                  <button
+                    onClick={handleCopyReadme}
+                    className="w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-2">
+                      {copiedReadme ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-500" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5 text-neutral-400" />
+                      )}
+                      <span className={copiedReadme ? "text-emerald-500 font-semibold" : ""}>
+                        {copiedReadme ? "Copied README!" : "Copy README.md"}
+                      </span>
+                    </div>
+                  </button>
+
+                  {generatedLicense && (
+                    <button
+                      onClick={handleCopyLicense}
+                      className="w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors text-left"
+                    >
+                      <div className="flex items-center gap-2">
+                        {copiedLicense ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-500" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5 text-neutral-400" />
+                        )}
+                        <span className={copiedLicense ? "text-emerald-500 font-semibold" : ""}>
+                          {copiedLicense ? "Copied LICENSE!" : "Copy LICENSE"}
+                        </span>
+                      </div>
+                    </button>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
 

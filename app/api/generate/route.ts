@@ -455,8 +455,21 @@ export async function POST(req: Request) {
       try {
         let dbUser = null;
         if (session?.user?.username) {
-          dbUser = await prisma.user.findFirst({
-            where: { username: session.user.username },
+          const userGithubId = session.user.githubId || session.user.username;
+          dbUser = await prisma.user.upsert({
+            where: { githubId: userGithubId },
+            update: {
+              username: session.user.username,
+              avatarUrl: session.user.image,
+              accessToken: session.user.accessToken,
+            },
+            create: {
+              githubId: userGithubId,
+              username: session.user.username,
+              email: session.user.email,
+              avatarUrl: session.user.image,
+              accessToken: session.user.accessToken,
+            },
           });
         }
 
@@ -475,6 +488,7 @@ export async function POST(req: Request) {
           where: { fullName },
           update: {
             lastAnalyzedSha: treeResponse.sha,
+            userId: dbUser.id,
           },
           create: {
             owner,
