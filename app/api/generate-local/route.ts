@@ -64,32 +64,133 @@ export async function POST(req: Request) {
     try {
       const pipeline = new AnalysisPipeline();
 
-      // Stage 0: Structural Extraction
+      // ── Stage 0: Structural Extraction ──
       await sendEvent("stage-progress", {
         stage: 0,
-        progress: 25,
-        message: `Parsed local file tree (${treePaths.length} files detected)`,
+        progress: 5,
+        message: `Parsing uploaded project structure...`,
+      });
+      await sendEvent("file-activity", {
+        action: "parse",
+        fileName: repoTitle,
+        detail: `Parsing local project file tree...`,
+        timestamp: Date.now(),
+      });
+
+      // Count directories
+      const dirSet = new Set<string>();
+      for (const p of treePaths) {
+        const parts = p.split("/");
+        for (let i = 1; i < parts.length; i++) {
+          dirSet.add(parts.slice(0, i).join("/"));
+        }
+      }
+
+      await sendEvent("file-activity", {
+        action: "detect",
+        fileName: "project-tree",
+        detail: `Found ${treePaths.length} files across ${dirSet.size} directories`,
+        timestamp: Date.now(),
+      });
+
+      await sendEvent("stage-progress", {
+        stage: 0,
+        progress: 12,
+        message: `Scanning configuration manifests...`,
       });
 
       const stage0 = await pipeline.runStage0(treePaths, fileContents);
 
-      // Stage 1: Relevance Filtering
+      // Emit manifests found
+      const manifestKeys = Object.keys(stage0.manifests);
+      for (const mk of manifestKeys) {
+        await sendEvent("file-activity", {
+          action: "parse",
+          fileName: mk.split("/").pop() || mk,
+          detail: `Found configuration manifest: ${mk}`,
+          timestamp: Date.now(),
+        });
+      }
+
+      // Report detected ecosystems
+      if (stage0.ecosystems.length > 0) {
+        await sendEvent("file-activity", {
+          action: "detect",
+          fileName: "ecosystems",
+          detail: `Detected: ${stage0.ecosystems.join(", ")}`,
+          timestamp: Date.now(),
+        });
+      }
+
+      await sendEvent("stage-progress", {
+        stage: 0,
+        progress: 20,
+        message: `Structural extraction complete — ${manifestKeys.length} manifests parsed`,
+      });
+      await sendEvent("file-activity", {
+        action: "parse",
+        fileName: "structure",
+        detail: `Structural extraction complete`,
+        timestamp: Date.now(),
+      });
+
+      // ── Stage 1: Relevance Filtering ──
       await sendEvent("stage-progress", {
         stage: 1,
-        progress: 45,
-        message: `Filtering source code files...`,
+        progress: 25,
+        message: `Filtering relevant files from ${treePaths.length} total entries...`,
+      });
+      await sendEvent("file-activity", {
+        action: "analyze",
+        fileName: "file-filter",
+        detail: `Analyzing ${treePaths.length} files for relevance...`,
+        timestamp: Date.now(),
       });
 
       const stage1 = await pipeline.runStage1(treePaths);
 
-      // Stage 2: Code Module Summarization
+      const routeCount = stage1.prioritizedFiles.filter((f) => f.category === "route").length;
+      const entryCount = stage1.prioritizedFiles.filter((f) => f.category === "entry").length;
+      const configCount = stage1.prioritizedFiles.filter((f) => f.category === "config").length;
+
+      await sendEvent("file-activity", {
+        action: "detect",
+        fileName: "categories",
+        detail: `Found ${routeCount} API routes, ${entryCount} entry points, ${configCount} configs`,
+        timestamp: Date.now(),
+      });
+
+      await sendEvent("stage-progress", {
+        stage: 1,
+        progress: 35,
+        message: `Filtered ${stage1.filteredPaths.length} relevant files from ${treePaths.length} total`,
+      });
+      await sendEvent("file-activity", {
+        action: "analyze",
+        fileName: "filter-result",
+        detail: `Kept ${stage1.filteredPaths.length} of ${treePaths.length} files after filtering`,
+        timestamp: Date.now(),
+      });
+
+      // ── Stage 2: Code Module Summarization ──
       await sendEvent("stage-progress", {
         stage: 2,
-        progress: 65,
-        message: `Summarizing core code modules via Gemini AI...`,
+        progress: 40,
+        message: `Preparing top priority source files for AI analysis...`,
       });
 
       const topPrioritized = stage1.prioritizedFiles.slice(0, 10);
+
+      // Emit file-activity for each code file being analyzed
+      for (const f of topPrioritized) {
+        await sendEvent("file-activity", {
+          action: "fetch",
+          fileName: f.path,
+          detail: `Reading source code for analysis...`,
+          timestamp: Date.now(),
+        });
+      }
+
       const topModules = topPrioritized.map((f) => ({
         moduleName: f.path,
         files: [
@@ -100,13 +201,43 @@ export async function POST(req: Request) {
         ],
       }));
 
+      await sendEvent("stage-progress", {
+        stage: 2,
+        progress: 50,
+        message: `Sending ${topPrioritized.length} modules to Gemini AI for summarization...`,
+      });
+      await sendEvent("file-activity", {
+        action: "analyze",
+        fileName: "gemini-summarize",
+        detail: `Sending ${topPrioritized.length} modules to Gemini AI...`,
+        timestamp: Date.now(),
+      });
+
       const moduleSummaries = await pipeline.runStage2(topModules);
 
-      // Stage 3: Reduce into RepoDigest
+      await sendEvent("stage-progress", {
+        stage: 2,
+        progress: 60,
+        message: `AI summarized ${moduleSummaries.length} code modules`,
+      });
+      await sendEvent("file-activity", {
+        action: "analyze",
+        fileName: "summaries",
+        detail: `Gemini AI summarized ${moduleSummaries.length} modules successfully`,
+        timestamp: Date.now(),
+      });
+
+      // ── Stage 3: Reduce into RepoDigest ──
       await sendEvent("stage-progress", {
         stage: 3,
-        progress: 80,
-        message: `Synthesizing architecture dependencies & tech stack...`,
+        progress: 65,
+        message: `Assembling architecture topology & dependency graph...`,
+      });
+      await sendEvent("file-activity", {
+        action: "write",
+        fileName: "architecture",
+        detail: `Assembling architecture topology...`,
+        timestamp: Date.now(),
       });
 
       const digest = await pipeline.runStage3(
@@ -116,14 +247,34 @@ export async function POST(req: Request) {
         stage0
       );
 
+      await sendEvent("stage-progress", {
+        stage: 3,
+        progress: 75,
+        message: `Architecture digest assembled — ${digest.techStack.frameworks.length + 1} technologies detected`,
+      });
+
+      const techList = [digest.techStack.language, ...digest.techStack.frameworks].filter(Boolean);
+      await sendEvent("file-activity", {
+        action: "detect",
+        fileName: "tech-stack",
+        detail: `Detected tech stack: ${techList.slice(0, 6).join(", ")}${techList.length > 6 ? "..." : ""}`,
+        timestamp: Date.now(),
+      });
+
       const licenseAuthor = authorName || teamName || session?.user?.name || "Project Author";
       const finalCopyrightYear = copyrightYear || new Date().getFullYear().toString();
 
-      // Stage 4: Gemini README Generation
+      // ── Stage 4: Gemini README Generation ──
       await sendEvent("stage-progress", {
         stage: 4,
-        progress: 92,
-        message: `Generating ${persona} style README markdown...`,
+        progress: 78,
+        message: `Generating ${persona} style README via Gemini AI...`,
+      });
+      await sendEvent("file-activity", {
+        action: "write",
+        fileName: "README.md",
+        detail: `Generating ${persona} README markdown and diagrams...`,
+        timestamp: Date.now(),
       });
 
       const normalizedCollaborators: CollaboratorInfo[] = (collaborators || []).map((c) => ({
@@ -143,16 +294,57 @@ export async function POST(req: Request) {
         collaborators: normalizedCollaborators,
       });
 
+      await sendEvent("file-activity", {
+        action: "write",
+        fileName: "README.md",
+        detail: `README generated — ${markdown.length.toLocaleString()} characters`,
+        timestamp: Date.now(),
+      });
+
+      await sendEvent("stage-progress", {
+        stage: 4,
+        progress: 88,
+        message: `Generating repository metadata & topics...`,
+      });
+      await sendEvent("file-activity", {
+        action: "write",
+        fileName: "metadata",
+        detail: `Generating repository description, topics & release notes...`,
+        timestamp: Date.now(),
+      });
+
       const metadataRes = await generateRepoMetadata(digest);
+
+      await sendEvent("stage-progress", {
+        stage: 4,
+        progress: 92,
+        message: `Generating license file...`,
+      });
+
       const licenseContent =
         includeLicense !== false
           ? generateMITLicense(licenseAuthor, Number(finalCopyrightYear) || new Date().getFullYear())
           : null;
 
+      if (licenseContent) {
+        await sendEvent("file-activity", {
+          action: "write",
+          fileName: "LICENSE",
+          detail: `Generated MIT License for ${licenseAuthor}`,
+          timestamp: Date.now(),
+        });
+      }
+
       await sendEvent("stage-progress", {
         stage: 4,
-        progress: 98,
-        message: "Finalizing documentation and badges...",
+        progress: 95,
+        message: "Persisting generation record to database...",
+      });
+      await sendEvent("file-activity", {
+        action: "write",
+        fileName: "database",
+        detail: `Persisting generation record...`,
+        timestamp: Date.now(),
       });
 
       // Database Persistence (non-blocking)
@@ -197,6 +389,18 @@ export async function POST(req: Request) {
       } catch (dbErr) {
         console.warn("[Local Generate] DB persistence warning (non-fatal):", dbErr);
       }
+
+      await sendEvent("stage-progress", {
+        stage: 4,
+        progress: 98,
+        message: "Finalizing documentation and badges...",
+      });
+      await sendEvent("file-activity", {
+        action: "write",
+        fileName: "finalize",
+        detail: `Finalizing documentation — all stages complete`,
+        timestamp: Date.now(),
+      });
 
       await sendEvent("complete", {
         success: true,
