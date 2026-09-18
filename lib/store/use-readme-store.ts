@@ -160,5 +160,7 @@ export const useReadmeStore = create<ReadmeStore>((set) => ({
     }),
 }));
 
-
-
+if (typeof window !== "undefined") {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__README_STORE__ = useReadmeStore;
+}
