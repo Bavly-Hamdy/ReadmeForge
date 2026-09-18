@@ -95,3 +95,33 @@ export const generateLocalRequestSchema = z.object({
 });
 
 export type GenerateLocalRequestInput = z.infer<typeof generateLocalRequestSchema>;
+
+export const auditRequestSchema = z.object({
+  markdownContent: z.string().min(1, "Markdown cannot be empty"),
+  checkLinks: z.boolean().optional().default(false),
+});
+
+export type AuditRequestInput = z.infer<typeof auditRequestSchema>;
+
+export const translateRequestSchema = z.object({
+  markdownContent: z.string().min(1, "Markdown cannot be empty"),
+  targetLanguage: z.string().min(2).max(15),
+  repoName: z.string().max(200).optional(),
+});
+
+export type TranslateRequestInput = z.infer<typeof translateRequestSchema>;
+
+export const workflowConfigSchema = z.object({
+  repoFullName: z.string().min(1, "Repository full name is required"),
+  triggerBranch: z.string().min(1).default("main"),
+  schedule: z.string().optional(),
+  persona: z
+    .enum(["PORTFOLIO", "OPEN_SOURCE", "MINIMALIST", "ENTERPRISE"])
+    .optional()
+    .default("ENTERPRISE"),
+  includeTests: z.boolean().optional().default(false),
+  nodeVersion: z.string().optional(),
+  pythonVersion: z.string().optional(),
+});
+
+export type WorkflowConfigInput = z.infer<typeof workflowConfigSchema>;

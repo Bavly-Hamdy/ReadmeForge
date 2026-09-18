@@ -22,6 +22,11 @@ interface ReadmeStore {
   digest: RepoDigest | null;
   error: string | null;
   editHistory: string[];
+  auditResult: import("@/lib/audit/readme-auditor").AuditResult | null;
+  isAuditing: boolean;
+  translatedVersions: Record<string, string>;
+  isTranslating: boolean;
+  isExporting: boolean;
 
   toggleTheme: () => void;
   setRepoUrl: (url: string) => void;
@@ -46,6 +51,12 @@ interface ReadmeStore {
   pushEditHistory: (content: string) => void;
   undoEdit: () => void;
   setRepoUrlSilent: (url: string) => void;
+  setAuditResult: (result: import("@/lib/audit/readme-auditor").AuditResult | null) => void;
+  setIsAuditing: (isAuditing: boolean) => void;
+  setTranslatedVersion: (langCode: string, content: string) => void;
+  setIsTranslating: (isTranslating: boolean) => void;
+  clearTranslations: () => void;
+  setIsExporting: (isExporting: boolean) => void;
   loadFromHistory: (data: {
     markdown: string;
     repoUrl: string;
@@ -76,6 +87,11 @@ export const useReadmeStore = create<ReadmeStore>((set) => ({
   digest: null,
   error: null,
   editHistory: [],
+  auditResult: null,
+  isAuditing: false,
+  translatedVersions: {},
+  isTranslating: false,
+  isExporting: false,
 
   toggleTheme: () =>
     set((state) => ({ theme: state.theme === "dark" ? "light" : "dark" })),
@@ -125,6 +141,18 @@ export const useReadmeStore = create<ReadmeStore>((set) => ({
       };
     }),
   setRepoUrlSilent: (repoUrl) => set({ repoUrl }),
+  setAuditResult: (auditResult) => set({ auditResult }),
+  setIsAuditing: (isAuditing) => set({ isAuditing }),
+  setTranslatedVersion: (langCode, content) =>
+    set((state) => ({
+      translatedVersions: {
+        ...state.translatedVersions,
+        [langCode]: content,
+      },
+    })),
+  setIsTranslating: (isTranslating) => set({ isTranslating }),
+  clearTranslations: () => set({ translatedVersions: {} }),
+  setIsExporting: (isExporting) => set({ isExporting }),
   loadFromHistory: ({ markdown, repoUrl, persona, license }) =>
     set((state) => ({
       generatedMarkdown: markdown,
@@ -160,7 +188,12 @@ export const useReadmeStore = create<ReadmeStore>((set) => ({
     }),
 }));
 
+declare global {
+  interface Window {
+    __README_STORE__?: typeof useReadmeStore;
+  }
+}
+
 if (typeof window !== "undefined") {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (window as any).__README_STORE__ = useReadmeStore;
+  window.__README_STORE__ = useReadmeStore;
 }

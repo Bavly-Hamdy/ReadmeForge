@@ -1,10 +1,10 @@
 <div align="center">
   <br />
-  <img src="https://img.shields.io/badge/README--FORGE-v2.0_ENTERPRISE-0a0a0a?style=for-the-badge&logo=rocket&logoColor=white" alt="ReadmeForge Banner" />
-  <h1>⚡ ReadmeForge v2.0</h1>
-  <p><b>Production-Grade Codebase Documentation & SPDX License Automation Platform</b></p>
+  <img src="https://img.shields.io/badge/README--FORGE-v3.0_ENTERPRISE-0a0a0a?style=for-the-badge&logo=rocket&logoColor=white" alt="ReadmeForge Banner" />
+  <h1>⚡ ReadmeForge v3.0</h1>
+  <p><b>Enterprise-Grade Documentation Intelligence & CI/CD Platform</b></p>
   <p>
-    AST Multi-Ecosystem Parsing · Real-Time SSE 0–100% Streaming · Persistent Project History Drawer · Live CodeMirror 6 Editor · Interactive Mermaid.js Topologies · One-Click GitHub Push & Pull Requests · Standalone License Engine · Multi-File ZIP Bundling
+    Multi-Language AI Translation · 10-Point Health Audit Engine · Monorepo Sub-Package Discovery · GitHub Actions CI/CD Generator · OpenAPI-to-Markdown Specification Tables · Standalone PDF & Styled HTML Export · AST Multi-Ecosystem Parsing · Real-Time SSE 0–100% Streaming
   </p>
 
   <p>
@@ -24,7 +24,7 @@
     <img src="https://img.shields.io/badge/Google_Gemini-1.5_Pro-8E75B2?style=flat-square&logo=googlegemini&logoColor=white" alt="Google Gemini">
     <img src="https://img.shields.io/badge/Octokit-v4.0-181717?style=flat-square&logo=github&logoColor=white" alt="Octokit">
     <img src="https://img.shields.io/badge/CodeMirror-v6.0-black?style=flat-square&logo=codemirror&logoColor=white" alt="CodeMirror">
-    <img src="https://img.shields.io/badge/Tests-Vitest_20/20_Passing-6E9F18?style=flat-square&logo=vitest&logoColor=white" alt="Vitest">
+    <img src="https://img.shields.io/badge/Tests-Vitest_32/32_Passing-6E9F18?style=flat-square&logo=vitest&logoColor=white" alt="Vitest">
   </p>
   <br />
 </div>
@@ -496,6 +496,80 @@ Conversational modification of active Markdown documentation.
 
 ---
 
+### 5. `POST /api/audit`
+Evaluates README markdown content against 10 engineering quality criteria and returns a 0–100 score, letter grade (A+ to F), and auto-fix recommendations.
+
+```json
+// Request Body
+{
+  "markdownContent": "# Full README content...",
+  "checkLinks": false
+}
+
+// Response (200 OK)
+{
+  "success": true,
+  "result": {
+    "totalScore": 95,
+    "grade": "A+",
+    "criteria": [
+      { "id": "project-description", "name": "Project Description & Title", "passed": true, "score": 10, "maxScore": 10 },
+      { "id": "installation-guide", "name": "Installation & Setup Guide", "passed": true, "score": 10, "maxScore": 10 }
+    ],
+    "suggestions": [],
+    "summary": "Exceptional documentation quality! Your README meets top-tier engineering standards."
+  }
+}
+```
+
+---
+
+### 6. `POST /api/translate`
+Localizes technical README markdown into 12+ international languages using Gemini AI while strictly preserving code blocks, badges, tables, and Mermaid diagrams.
+
+```json
+// Request Body
+{
+  "markdownContent": "# ReadmeForge ⚡...",
+  "targetLanguage": "ar",
+  "repoName": "ReadmeForge"
+}
+
+// Response (200 OK)
+{
+  "success": true,
+  "translatedMarkdown": "<!-- ReadmeForge Multilingual Switcher -->\n[🌐 English](README.md) • [🇸🇦 العربية](README.ar.md)\n<br />\n\n# ريدمي فورج ⚡...",
+  "language": { "code": "ar", "label": "Arabic", "direction": "rtl" },
+  "filename": "README.ar.md"
+}
+```
+
+---
+
+### 7. `POST /api/generate-workflow`
+Generates a production-ready `.github/workflows/readme-sync.yml` file for continuous documentation audits and commits on push or schedule.
+
+```json
+// Request Body
+{
+  "repoFullName": "Bavly-Hamdy/ReadmeForge",
+  "triggerBranch": "main",
+  "schedule": "0 0 * * 1",
+  "persona": "ENTERPRISE",
+  "includeTests": true,
+  "nodeVersion": "20"
+}
+
+// Response (200 OK)
+{
+  "success": true,
+  "yaml": "name: ReadmeForge Documentation Sync\non:\n  push:\n    branches:\n      - main\n...",
+  "filename": ".github/workflows/readme-sync.yml"
+}
+```
+
+---
+
 ## 📑 Architectural Decision Records (ADR)
 
 ### ADR-001: Next.js 14 App Router & Zero-Client Secret Leakage
@@ -526,15 +600,18 @@ Conversational modification of active Markdown documentation.
 ReadmeForge/
 ├── app/
 │   ├── api/
+│   │   ├── audit/                  # 10-point documentation health audit route
 │   │   ├── auth/[...nextauth]/      # NextAuth.js GitHub OAuth handler
 │   │   ├── generate/               # Primary SSE pipeline stream route
 │   │   ├── generate-local/         # Offline/Local ZIP ingestion route
+│   │   ├── generate-workflow/      # GitHub Actions CI/CD workflow generator
 │   │   ├── github/
 │   │   │   ├── push-readme/        # Octokit Direct Commit & PR service
 │   │   │   └── sync-metadata/      # GitHub topic & v1.0.0 release route
 │   │   ├── history/                # History collection endpoint (GET)
 │   │   │   └── [id]/               # History item route (GET, DELETE)
-│   │   └── refine/                 # Conversational AI refinement route
+│   │   ├── refine/                 # Conversational AI refinement route
+│   │   └── translate/              # Multi-language Gemini translation route
 │   ├── globals.css                 # Design tokens & dark/light styles
 │   ├── layout.tsx                  # Root layout & NextAuth session wrapper
 │   └── page.tsx                    # Main single-page SaaS application
@@ -543,25 +620,41 @@ ReadmeForge/
 │   │   ├── generator-form.tsx      # Form, Persona grid, 0-100% Stepper & Terminal
 │   │   ├── github-sync-card.tsx    # GitHub metadata & v1.0.0 release card
 │   │   ├── history-drawer.tsx      # Slide-out saved projects drawer
-│   │   └── local-upload.tsx        # Local ZIP upload & drag-and-drop zone
+│   │   ├── local-upload.tsx        # Local ZIP upload & drag-and-drop zone
+│   │   └── workflow-generator-modal.tsx # CI/CD workflow generator dialog
 │   ├── editor/
 │   │   ├── ai-refine-chat.tsx      # AI conversational refine widget
+│   │   ├── audit-scorecard.tsx     # Radial gauge & 10-point audit checklist
 │   │   ├── markdown-editor.tsx     # CodeMirror 6 live markdown editor
 │   │   ├── mermaid-diagram.tsx     # Client-side SVG Mermaid topology renderer
-│   │   └── readme-preview.tsx      # Preview tabs, Export menu & Push modal
+│   │   ├── readme-preview.tsx      # Preview tabs, Export menu & Push modal
+│   │   └── translate-dropdown.tsx  # 12-language selector with RTL support
 │   └── providers/
 │       └── session-provider.tsx    # NextAuth client provider
 ├── lib/
 │   ├── ai/
 │   │   ├── gemini.ts               # Gemini AI engine & grounding contract
 │   │   └── personas.ts             # 6 Persona prompts & section definitions
+│   ├── audit/
+│   │   └── readme-auditor.ts       # 10-point rule-based health audit engine
+│   ├── cicd/
+│   │   └── workflow-generator.ts   # Continuous documentation sync YAML builder
+│   ├── export/
+│   │   ├── html-to-pdf.ts          # Native browser iframe print-to-PDF utility
+│   │   └── markdown-to-html.ts     # Standalone HTML exporter with custom styles
 │   ├── github/
 │   │   ├── metadata.ts             # GitHub description, topics & releases
 │   │   ├── octokit.ts              # Authenticated Octokit client factory
 │   │   ├── push.ts                 # Commit files & create PR automation
 │   │   └── tree.ts                 # Zero-pre-flight tree prober
+│   ├── i18n/
+│   │   └── languages.ts            # 12+ international languages registry
 │   ├── license/
 │   │   └── mit.ts                  # Standalone SPDX MIT license builder
+│   ├── monorepo/
+│   │   └── detector.ts             # Turborepo, Nx, Lerna, pnpm & Cargo detector
+│   ├── openapi/
+│   │   └── parser.ts               # OpenAPI 2.0/3.0 JSON/YAML parser & tables
 │   ├── store/
 │   │   └── use-readme-store.ts     # Zustand global store & undo history
 │   ├── validation/

@@ -207,6 +207,26 @@ RULE 5 · HUMAN-GRADE NARRATIVE & VISUAL CLARITY
 RULE 6 · BANNED FLUFF WORDS
   Do NOT use vacuous buzzwords: "blazing fast", "revolutionary", "cutting-edge", "unmatched performance".
   Use precise, architectural, human-grade technical prose.
+${
+  digest.monorepo
+    ? `
+RULE 7 · MONOREPO WORKSPACE PACKAGES
+  The repository is an active ${digest.monorepo.tool || "monorepo"} workspace containing ${digest.monorepo.packages.length} packages:
+${digest.monorepo.packages.map((p) => `  • ${p.name} (\`${p.path}\`)${p.description ? `: ${p.description}` : ""}`).join("\n")}
+  You MUST include a dedicated "📦 Workspace Packages" section detailing each package, its path, and its role, alongside workspace root execution scripts.
+`
+    : ""
+}${
+  digest.openApiSpec
+    ? `
+RULE 8 · FACTUAL OPENAPI SPECIFICATION REFERENCE
+  The repository contains a verified OpenAPI specification ("${digest.openApiSpec.title}" v${digest.openApiSpec.version}) with ${digest.openApiSpec.endpointCount} endpoints.
+  You MUST include the following pre-rendered API Reference section directly in the README:
+
+${digest.openApiSpec.markdownReference}
+`
+    : ""
+}
 
 ════════════════════════════════════════════════════════════════════
 FULL REPOSITORY DIGEST (AUTHORITATIVE REPOSITORY EVIDENCE)

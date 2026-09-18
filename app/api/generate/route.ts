@@ -161,6 +161,17 @@ export async function POST(req: Request) {
         "go.mod",
         "pom.xml",
         "build.gradle",
+        "turbo.json",
+        "nx.json",
+        "lerna.json",
+        "pnpm-workspace.yaml",
+        "pnpm-workspace.yml",
+        "go.work",
+        "openapi.json",
+        "openapi.yaml",
+        "openapi.yml",
+        "swagger.json",
+        "swagger.yaml",
         ".env.example",
         ".env.local",
       ];
@@ -209,6 +220,24 @@ export async function POST(req: Request) {
           action: "detect",
           fileName: "ecosystems",
           detail: `Detected: ${stage0.ecosystems.join(", ")}`,
+          timestamp: Date.now(),
+        });
+      }
+
+      if (stage0.monorepoInfo?.isMonorepo) {
+        await sendEvent("file-activity", {
+          action: "detect",
+          fileName: "monorepo",
+          detail: `Monorepo workspace (${stage0.monorepoInfo.tool}) detected with ${stage0.monorepoInfo.packages.length} packages`,
+          timestamp: Date.now(),
+        });
+      }
+
+      if (stage0.openApiSpec) {
+        await sendEvent("file-activity", {
+          action: "detect",
+          fileName: "openapi",
+          detail: `OpenAPI spec (${stage0.openApiSpec.title} v${stage0.openApiSpec.version}) with ${stage0.openApiSpec.endpoints.length} endpoints`,
           timestamp: Date.now(),
         });
       }

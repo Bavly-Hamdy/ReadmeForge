@@ -22,12 +22,22 @@ import {
   X,
   ChevronDown,
   Archive,
+  ShieldCheck,
+  Workflow,
+  Printer,
+  Globe,
 } from "lucide-react";
 import { useReadmeStore } from "@/lib/store/use-readme-store";
 import { MermaidDiagram } from "./mermaid-diagram";
 import { GithubSyncCard } from "@/components/dashboard/github-sync-card";
 import { MarkdownEditor } from "./markdown-editor";
 import { AIRefineChat } from "./ai-refine-chat";
+import { TranslateDropdown } from "./translate-dropdown";
+import { AuditScorecard } from "./audit-scorecard";
+import { WorkflowGeneratorModal } from "@/components/dashboard/workflow-generator-modal";
+import { markdownToStyledHtml } from "@/lib/export/markdown-to-html";
+import { exportHtmlToPdf } from "@/lib/export/html-to-pdf";
+import { LanguageOption } from "@/lib/i18n/languages";
 
 export function ReadmePreview() {
   const {
@@ -36,13 +46,21 @@ export function ReadmePreview() {
     persona,
     repoUrl,
     theme,
+    digest,
+    auditResult,
+    isAuditing,
     setGeneratedMarkdown,
     setGeneratedLicense,
+    setAuditResult,
+    setIsAuditing,
   } = useReadmeStore();
 
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<"preview" | "edit" | "code">("preview");
   const [activeFile, setActiveFile] = useState<"readme" | "license">("readme");
+  const [auditModalOpen, setAuditModalOpen] = useState(false);
+  const [workflowModalOpen, setWorkflowModalOpen] = useState(false);
+  const [isApplyingFix, setIsApplyingFix] = useState(false);
 
   // Push to GitHub state
   const [pushModalOpen, setPushModalOpen] = useState(false);
@@ -166,6 +184,96 @@ export function ReadmePreview() {
       setIsZipping(false);
       setExportMenuOpen(false);
     }
+  };
+
+  const handleRunAudit = async () => {
+    if (!generatedMarkdown) return;
+    setIsAuditing(true);
+    try {
+      const res = await fetch("/api/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          markdownContent: generatedMarkdown,
+          checkLinks: false,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.result) {
+        setAuditResult(data.result);
+        setAuditModalOpen(true);
+      }
+    } catch (err) {
+      console.error("Audit request failed:", err);
+    } finally {
+      setIsAuditing(false);
+    }
+  };
+
+  const handleAutoFixAudit = async (instruction: string) => {
+    if (!generatedMarkdown || isApplyingFix) return;
+    setIsApplyingFix(true);
+    try {
+      const res = await fetch("/api/refine", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentMarkdown: generatedMarkdown,
+          instruction,
+          repoDigest: digest || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.refinedMarkdown) {
+        setGeneratedMarkdown(data.refinedMarkdown);
+
+        // Re-audit immediately to update score live!
+        const auditRes = await fetch("/api/audit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            markdownContent: data.refinedMarkdown,
+            checkLinks: false,
+          }),
+        });
+        const auditData = await auditRes.json();
+        if (auditRes.ok && auditData.result) {
+          setAuditResult(auditData.result);
+        }
+      }
+    } catch (err) {
+      console.error("Auto-fix execution failed:", err);
+    } finally {
+      setIsApplyingFix(false);
+    }
+  };
+
+  const handleExportHtml = () => {
+    if (!generatedMarkdown) return;
+    const repoName = getRepoName();
+    const styledHtml = markdownToStyledHtml(generatedMarkdown, {
+      title: `${repoName} Documentation`,
+      theme: theme === "light" ? "light" : "dark",
+      includeMermaid: true,
+    });
+    downloadFile(styledHtml, `${repoName}-docs.html`);
+    setExportMenuOpen(false);
+  };
+
+  const handleExportPdf = async () => {
+    if (!generatedMarkdown) return;
+    const repoName = getRepoName();
+    const styledHtml = markdownToStyledHtml(generatedMarkdown, {
+      title: `${repoName} Documentation`,
+      theme: "light",
+      includeMermaid: true,
+    });
+    await exportHtmlToPdf(styledHtml, `${repoName}-docs`);
+    setExportMenuOpen(false);
+  };
+
+  const handleTranslationLoaded = (translatedMarkdown: string, lang: LanguageOption) => {
+    setGeneratedMarkdown(translatedMarkdown);
   };
 
   const handlePushToGithub = async (e: React.FormEvent) => {
@@ -294,6 +402,43 @@ export function ReadmePreview() {
               Raw
             </button>
           </div>
+
+          {/* Translate Dropdown */}
+          <TranslateDropdown
+            currentMarkdown={generatedMarkdown}
+            repoName={getRepoName()}
+            onTranslationLoaded={handleTranslationLoaded}
+          />
+
+          {/* Health Audit Button */}
+          <button
+            onClick={handleRunAudit}
+            disabled={isAuditing}
+            className="px-3 py-1.5 bg-violet-600/10 hover:bg-violet-600/20 border border-violet-500/30 text-violet-400 hover:text-violet-300 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 transition-colors shadow-sm active:scale-95 disabled:opacity-50"
+            title="Run 10-Point Documentation Health & Quality Audit"
+          >
+            {isAuditing ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-violet-400" />
+            ) : (
+              <ShieldCheck className="w-3.5 h-3.5 text-violet-400" />
+            )}
+            <span>Audit</span>
+            {auditResult && (
+              <span className="ml-0.5 px-1.5 py-0.2 rounded bg-violet-500/20 text-violet-300 text-[10px] font-bold">
+                {auditResult.totalScore}%
+              </span>
+            )}
+          </button>
+
+          {/* GitHub Actions CI/CD Workflow Button */}
+          <button
+            onClick={() => setWorkflowModalOpen(true)}
+            className="px-3 py-1.5 bg-cyan-600/10 hover:bg-cyan-600/20 border border-cyan-500/30 text-cyan-400 hover:text-cyan-300 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 transition-colors shadow-sm active:scale-95"
+            title="Generate GitHub Actions CI/CD Workflow"
+          >
+            <Workflow className="w-3.5 h-3.5 text-cyan-400" />
+            <span>CI/CD</span>
+          </button>
 
           {/* Push to GitHub Button */}
           {repoUrl && (
@@ -431,6 +576,34 @@ export function ReadmePreview() {
                       </div>
                     </button>
                   )}
+
+                  <div className="my-1.5 border-t border-neutral-200 dark:border-neutral-800" />
+
+                  <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
+                    Standalone Documents
+                  </div>
+
+                  <button
+                    onClick={handleExportHtml}
+                    className="w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Globe className="w-3.5 h-3.5 text-violet-400" />
+                      <span>Export as Styled HTML</span>
+                    </div>
+                    <span className="text-[10px] text-violet-400 font-mono">.html</span>
+                  </button>
+
+                  <button
+                    onClick={handleExportPdf}
+                    className="w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Printer className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Export as PDF</span>
+                    </div>
+                    <span className="text-[10px] text-cyan-400 font-mono">.pdf</span>
+                  </button>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -784,6 +957,29 @@ export function ReadmePreview() {
 
       {/* GitHub Auto-Sync & Release Panel */}
       <GithubSyncCard />
+
+      {/* 10-Point Health Audit Scorecard Modal */}
+      <AnimatePresence>
+        {auditModalOpen && auditResult && (
+          <AuditScorecard
+            result={auditResult}
+            onClose={() => setAuditModalOpen(false)}
+            onAutoFix={handleAutoFixAudit}
+            isApplyingFix={isApplyingFix}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* GitHub Actions CI/CD Generator Modal */}
+      <AnimatePresence>
+        {workflowModalOpen && (
+          <WorkflowGeneratorModal
+            repoFullName={getRepoName()}
+            persona={persona}
+            onClose={() => setWorkflowModalOpen(false)}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

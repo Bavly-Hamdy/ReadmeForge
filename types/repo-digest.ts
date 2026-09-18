@@ -51,6 +51,17 @@ export interface RepoDigest {
   license: string | null;
   treePathsSample?: string[];
   existingReadmeSummary: string | null;
+  monorepo?: {
+    tool: string | null;
+    packages: { name: string; path: string; description?: string; hasOwnReadme?: boolean }[];
+  };
+  openApiSpec?: {
+    title: string;
+    version: string;
+    baseUrl: string;
+    endpointCount: number;
+    markdownReference: string;
+  };
 }
 
 export interface ReadmeGenerationParams {
@@ -70,6 +81,8 @@ export interface Stage0Result {
   ecosystems: string[];
   detectedWorkspaces?: string[];
   treePaths: string[];
+  monorepoInfo?: import("../lib/monorepo/detector").MonorepoInfo;
+  openApiSpec?: import("../lib/openapi/parser").ParsedOpenAPI;
 }
 
 export interface Stage1Result {

@@ -6,6 +6,8 @@ import {
   ReadmeGenerationParams,
 } from "../types/repo-digest";
 import { generateReadmeFromDigest, generateContentWithFallback } from "../lib/ai/gemini";
+import { detectMonorepo } from "../lib/monorepo/detector";
+import { parseOpenAPISpec, endpointsToMarkdown, ParsedOpenAPI } from "../lib/openapi/parser";
 
 export class AnalysisPipeline {
   /**
@@ -24,6 +26,14 @@ export class AnalysisPipeline {
       "go.mod": "golang",
       "pom.xml": "java/maven",
       "build.gradle": "java/gradle",
+      "turbo.json": "turborepo",
+      "nx.json": "nx",
+      "pnpm-workspace.yaml": "pnpm",
+      "openapi.json": "openapi",
+      "openapi.yaml": "openapi",
+      "openapi.yml": "openapi",
+      "swagger.json": "openapi",
+      "swagger.yaml": "openapi",
     };
 
     for (const path of treePaths) {
@@ -37,10 +47,25 @@ export class AnalysisPipeline {
       }
     }
 
+    const monorepoInfo = detectMonorepo(treePaths, manifests);
+
+    let openApiSpec: ParsedOpenAPI | undefined;
+    for (const [path, content] of Object.entries(fileContents)) {
+      if (/(openapi|swagger)\.(json|ya?ml)$/i.test(path) && content) {
+        const parsed = parseOpenAPISpec(content);
+        if (parsed) {
+          openApiSpec = parsed;
+          break;
+        }
+      }
+    }
+
     return {
       manifests,
       ecosystems,
       treePaths,
+      monorepoInfo,
+      openApiSpec,
     };
   }
 
@@ -301,6 +326,26 @@ Return ONLY valid JSON matching this exact structure array:
       license: manifestLicense || "MIT",
       treePathsSample: stage0.treePaths.slice(0, 100),
       existingReadmeSummary: null,
+      monorepo: stage0.monorepoInfo?.isMonorepo
+        ? {
+            tool: stage0.monorepoInfo.tool,
+            packages: stage0.monorepoInfo.packages.map((pkg) => ({
+              name: pkg.name,
+              path: pkg.path,
+              description: pkg.description,
+              hasOwnReadme: pkg.hasOwnReadme,
+            })),
+          }
+        : undefined,
+      openApiSpec: stage0.openApiSpec
+        ? {
+            title: stage0.openApiSpec.title,
+            version: stage0.openApiSpec.version,
+            baseUrl: stage0.openApiSpec.baseUrl,
+            endpointCount: stage0.openApiSpec.endpoints.length,
+            markdownReference: endpointsToMarkdown(stage0.openApiSpec),
+          }
+        : undefined,
     };
   }
 
