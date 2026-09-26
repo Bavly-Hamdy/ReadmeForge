@@ -28,6 +28,8 @@ import {
   Code2,
   PenLine,
   Eye,
+  ArrowDown,
+  X,
 } from "lucide-react";
 import { useReadmeStore } from "@/lib/store/use-readme-store";
 import { PERSONA_REGISTRY, Persona } from "@/lib/ai/personas";
@@ -97,6 +99,7 @@ export function GeneratorForm() {
   const [collabHandle, setCollabHandle] = useState("");
   const [isAuthError, setIsAuthError] = useState(false);
 
+  const [showProgressCard, setShowProgressCard] = useState(false);
   const [targetProgress, setTargetProgress] = useState(0);
   const [displayProgress, setDisplayProgress] = useState(0);
   const [currentStage, setCurrentStage] = useState(0);
@@ -162,15 +165,14 @@ export function GeneratorForm() {
   // Handle completion transitions
   useEffect(() => {
     if (isFinished && displayProgress >= 100 && apiResult) {
+      setIsGenerating(false);
+      // Allow user 3.5 seconds to see 100% completed terminal & stages before gentle auto-scroll to preview
       const timeout = setTimeout(() => {
-        setIsGenerating(false);
-        setTimeout(() => {
-          document.getElementById("readme-preview-section")?.scrollIntoView({
-            behavior: "smooth",
-            block: "start",
-          });
-        }, 100);
-      }, 1200);
+        document.getElementById("readme-preview-section")?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 3500);
 
       return () => clearTimeout(timeout);
     }
@@ -202,6 +204,7 @@ export function GeneratorForm() {
     }
 
     setIsGenerating(true);
+    setShowProgressCard(true);
     setTargetProgress(3);
     setDisplayProgress(0);
     setCurrentStage(0);
@@ -216,8 +219,8 @@ export function GeneratorForm() {
 
     // Scroll progress card into view smoothly
     setTimeout(() => {
-      stepperRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 50);
+      stepperRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 100);
 
     try {
       const endpoint = inputMode === "github" ? "/api/generate" : "/api/generate-local";
@@ -345,6 +348,7 @@ export function GeneratorForm() {
       const msg = err instanceof Error ? err.message : "An error occurred during generation.";
       setError(msg);
       setIsGenerating(false);
+      setShowProgressCard(false);
       setDisplayProgress(0);
       setTargetProgress(0);
     }
@@ -565,6 +569,235 @@ export function GeneratorForm() {
           </div>
         )}
 
+        {/* ── REAL-TIME SSE PROGRESS CARD (FRONT & CENTER DIRECTLY UNDER INPUT) ── */}
+        <AnimatePresence>
+          {showProgressCard && (
+            <motion.div
+              ref={stepperRef}
+              initial={{ opacity: 0, y: 15, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -15, scale: 0.98 }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+              className="w-full my-2 p-6 sm:p-8 rounded-3xl border-2 border-neutral-300 dark:border-neutral-700 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl text-left shadow-2xl relative overflow-hidden ring-4 ring-neutral-200/50 dark:ring-neutral-800/50"
+            >
+              <div className="absolute -right-16 -top-16 w-48 h-48 rounded-full bg-gradient-to-br from-neutral-300/15 via-neutral-200/5 to-transparent dark:from-neutral-700/15 dark:via-neutral-800/5 blur-2xl pointer-events-none" />
+
+              <div className="flex flex-wrap items-center justify-between gap-4 mb-6 relative z-10">
+                <div className="flex items-center gap-4">
+                  <div className="relative p-3 rounded-2xl bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 shadow-md">
+                    <StageIcon className={`w-6 h-6 ${isComplete ? "" : "animate-pulse"}`} />
+                    {!isComplete && (
+                      <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                      </span>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-base font-extrabold font-mono text-neutral-900 dark:text-neutral-100">
+                        {isComplete ? "README Forged Successfully!" : "Forging Documentation..."}
+                      </h4>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider border ${
+                        isComplete
+                          ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700"
+                          : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-300 dark:border-neutral-700"
+                      }`}>
+                        {isComplete ? "Complete" : activeStageObj.title}
+                      </span>
+                    </div>
+                    <p className="text-xs font-mono text-neutral-600 dark:text-neutral-400 mt-1 font-medium">
+                      {isComplete ? "All stages finished. Your README is ready below." : (serverMessage || activeStageObj.subtitle)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-300 dark:border-neutral-700 text-xs font-mono text-neutral-600 dark:text-neutral-400">
+                    <Timer className="w-3.5 h-3.5 text-neutral-500" />
+                    <span>{(elapsedMs / 1000).toFixed(1)}s</span>
+                  </div>
+
+                  <div className="px-4 py-2 rounded-2xl bg-neutral-900 dark:bg-neutral-100 text-neutral-100 dark:text-neutral-900 shadow-lg border border-neutral-700 dark:border-neutral-300 flex items-center gap-1.5">
+                    <span className="text-xl sm:text-2xl font-black font-mono tracking-tight">
+                      {roundedProgress}%
+                    </span>
+                  </div>
+
+                  {isComplete && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        document.getElementById("readme-preview-section")?.scrollIntoView({
+                          behavior: "smooth",
+                          block: "start",
+                        });
+                      }}
+                      className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-mono font-semibold flex items-center gap-1.5 shadow-md transition-colors"
+                      title="Scroll to preview"
+                    >
+                      <span>View README</span>
+                      <ArrowDown className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setShowProgressCard(false)}
+                    className="p-2 rounded-xl text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                    title="Dismiss"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="w-full bg-neutral-200 dark:bg-neutral-800 h-4 rounded-full overflow-hidden mb-5 p-0.5 border border-neutral-300 dark:border-neutral-700 relative shadow-inner">
+                <motion.div
+                  className={`h-full rounded-full transition-all duration-150 ease-out shadow-md relative ${
+                    roundedProgress >= 100
+                      ? "bg-emerald-500"
+                      : "bg-gradient-to-r from-neutral-800 via-neutral-900 to-black dark:from-neutral-300 dark:via-neutral-100 dark:to-white"
+                  }`}
+                  style={{ width: `${roundedProgress}%` }}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 dark:via-black/20 to-transparent animate-pulse" />
+                </motion.div>
+              </div>
+
+              {/* ── Live Activity Terminal ── */}
+              {activityLog.length > 0 && (
+                <div className="mb-5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950 overflow-hidden">
+                  <div className="flex items-center gap-2 px-3 py-1.5 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900">
+                    <div className="flex gap-1">
+                      <span className="w-2 h-2 rounded-full bg-red-400" />
+                      <span className="w-2 h-2 rounded-full bg-amber-400" />
+                      <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                    </div>
+                    <span className="text-[10px] font-mono font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
+                      Live Activity
+                    </span>
+                    <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500 ml-auto">
+                      {activityLog.length} events
+                    </span>
+                  </div>
+                  <div
+                    ref={activityLogRef}
+                    className="max-h-[200px] overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-300 dark:scrollbar-thumb-neutral-700"
+                  >
+                    <AnimatePresence initial={false}>
+                      {activityLog.map((entry, idx) => {
+                        const isLatest = idx === activityLog.length - 1;
+                        const isCompleteEntry = entry.fileName === "✓ Complete";
+                        const ActionIcon =
+                          entry.action === "fetch" ? Download :
+                          entry.action === "parse" ? Code2 :
+                          entry.action === "analyze" ? Brain :
+                          entry.action === "write" ? PenLine :
+                          Eye;
+
+                        return (
+                          <motion.div
+                            key={entry.id}
+                            initial={{ opacity: 0, y: 8, height: 0 }}
+                            animate={{ opacity: 1, y: 0, height: "auto" }}
+                            transition={{ duration: 0.2, ease: "easeOut" }}
+                            className={`flex items-start gap-2.5 px-3 py-1.5 text-[11px] font-mono border-b border-neutral-100 dark:border-neutral-900 last:border-b-0 ${
+                              isCompleteEntry
+                                ? "bg-emerald-50 dark:bg-emerald-950/30"
+                                : idx % 2 === 0
+                                ? "bg-transparent"
+                                : "bg-neutral-100/50 dark:bg-neutral-900/30"
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
+                              {isLatest && !isCompleteEntry && (
+                                <span className="relative flex h-1.5 w-1.5">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                                </span>
+                              )}
+                              {isCompleteEntry ? (
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                              ) : (
+                                <ActionIcon
+                                  className={`w-3 h-3 ${
+                                    entry.action === "fetch" ? "text-neutral-600 dark:text-neutral-400" :
+                                    entry.action === "parse" ? "text-neutral-700 dark:text-neutral-300" :
+                                    entry.action === "analyze" ? "text-neutral-800 dark:text-neutral-200" :
+                                    entry.action === "write" ? "text-neutral-900 dark:text-neutral-100" :
+                                    "text-neutral-500 dark:text-neutral-400"
+                                  }`}
+                                />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <span className={`${
+                                isCompleteEntry
+                                  ? "text-emerald-700 dark:text-emerald-300 font-bold"
+                                  : "text-neutral-800 dark:text-neutral-200"
+                              }`}>
+                                {entry.detail || entry.fileName}
+                              </span>
+                              {entry.detail && entry.fileName && !isCompleteEntry && entry.fileName !== entry.detail && (
+                                <span className="ml-1.5 text-neutral-400 dark:text-neutral-500 truncate">
+                                  {entry.fileName}
+                                </span>
+                              )}
+                            </div>
+                          </motion.div>
+                        );
+                      })}
+                    </AnimatePresence>
+                  </div>
+                </div>
+              )}
+
+              {/* Stage Stepper Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5 relative z-10">
+                {STAGES.map((s) => {
+                  const isCompleted = s.id < currentStage || roundedProgress >= 100;
+                  const isCurrent = s.id === currentStage && roundedProgress < 100;
+                  const StageItemIcon = s.icon;
+                  return (
+                    <motion.div
+                      key={s.id}
+                      initial={false}
+                      animate={{
+                        scale: isCurrent ? 1.03 : 1,
+                        opacity: isCurrent || isCompleted ? 1 : 0.5,
+                      }}
+                      className={`flex flex-col items-center p-3 rounded-2xl border text-center transition-all ${
+                        isCompleted
+                          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400"
+                          : isCurrent
+                          ? "bg-neutral-900/10 dark:bg-white/10 border-neutral-900 dark:border-white text-neutral-950 dark:text-white shadow-md ring-1 ring-neutral-900/20 dark:ring-white/20"
+                          : "bg-neutral-50 dark:bg-neutral-800/40 border-neutral-200 dark:border-neutral-800 text-neutral-400"
+                      }`}
+                    >
+                      <div
+                        className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
+                          isCompleted
+                            ? "bg-emerald-500 text-white"
+                            : isCurrent
+                            ? "bg-neutral-900 dark:bg-white text-white dark:text-neutral-900"
+                            : "bg-neutral-200 dark:bg-neutral-700 text-neutral-500"
+                        }`}
+                      >
+                        {isCompleted ? <Check className="w-4 h-4 stroke-[3]" /> : <StageItemIcon className="w-4 h-4" />}
+                      </div>
+                      <span className="text-[11px] font-mono font-bold leading-tight">{s.title}</span>
+                      <span className="text-[9px] font-mono opacity-80 truncate w-full mt-0.5">{s.subtitle}</span>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* ── ADVANCED CONFIGURATION ACCORDION ── */}
         <AnimatePresence>
           {showAdvanced && (
@@ -738,202 +971,6 @@ export function GeneratorForm() {
           )}
         </AnimatePresence>
 
-        {/* ── REAL-TIME SSE PROGRESS CARD ── */}
-        <AnimatePresence>
-          {isGenerating && (
-            <motion.div
-              ref={stepperRef}
-              initial={{ opacity: 0, y: 20, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -20, scale: 0.95 }}
-              transition={{ duration: 0.4, ease: "easeOut" }}
-              className="w-full my-4 p-6 sm:p-8 rounded-3xl border-2 border-neutral-300 dark:border-neutral-700 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl text-left shadow-2xl relative overflow-hidden ring-4 ring-neutral-200/50 dark:ring-neutral-800/50"
-            >
-              <div className="absolute -right-16 -top-16 w-48 h-48 rounded-full bg-gradient-to-br from-neutral-300/15 via-neutral-200/5 to-transparent dark:from-neutral-700/15 dark:via-neutral-800/5 blur-2xl pointer-events-none" />
-
-              <div className="flex flex-wrap items-center justify-between gap-4 mb-6 relative z-10">
-                <div className="flex items-center gap-4">
-                  <div className="relative p-3 rounded-2xl bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 shadow-md">
-                    <StageIcon className="w-6 h-6 animate-pulse" />
-                    <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-                    </span>
-                  </div>
-
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-base font-extrabold font-mono text-neutral-900 dark:text-neutral-100">
-                        {roundedProgress === 100 ? "README Forged Successfully!" : "Forging Documentation..."}
-                      </h4>
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-300 dark:border-neutral-700">
-                        {activeStageObj.title}
-                      </span>
-                    </div>
-                    <p className="text-xs font-mono text-neutral-600 dark:text-neutral-400 mt-1 font-medium">
-                      {serverMessage || activeStageObj.subtitle}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-300 dark:border-neutral-700 text-xs font-mono text-neutral-600 dark:text-neutral-400">
-                    <Timer className="w-3.5 h-3.5 text-neutral-500" />
-                    <span>{(elapsedMs / 1000).toFixed(1)}s</span>
-                  </div>
-
-                  <div className="px-4 py-2 rounded-2xl bg-neutral-900 dark:bg-neutral-100 text-neutral-100 dark:text-neutral-900 shadow-lg border border-neutral-700 dark:border-neutral-300 flex items-center gap-1.5">
-                    <span className="text-xl sm:text-2xl font-black font-mono tracking-tight">
-                      {roundedProgress}%
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Progress Bar */}
-              <div className="w-full bg-neutral-200 dark:bg-neutral-800 h-4 rounded-full overflow-hidden mb-5 p-0.5 border border-neutral-300 dark:border-neutral-700 relative shadow-inner">
-                <motion.div
-                  className={`h-full rounded-full transition-all duration-150 ease-out shadow-md relative ${
-                    roundedProgress >= 100
-                      ? "bg-emerald-500"
-                      : "bg-gradient-to-r from-neutral-800 via-neutral-900 to-black dark:from-neutral-300 dark:via-neutral-100 dark:to-white"
-                  }`}
-                  style={{ width: `${roundedProgress}%` }}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 dark:via-black/20 to-transparent animate-pulse" />
-                </motion.div>
-              </div>
-
-              {/* ── Live Activity Terminal ── */}
-              {activityLog.length > 0 && (
-                <div className="mb-5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950 overflow-hidden">
-                  <div className="flex items-center gap-2 px-3 py-1.5 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900">
-                    <div className="flex gap-1">
-                      <span className="w-2 h-2 rounded-full bg-red-400" />
-                      <span className="w-2 h-2 rounded-full bg-amber-400" />
-                      <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    </div>
-                    <span className="text-[10px] font-mono font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
-                      Live Activity
-                    </span>
-                    <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500 ml-auto">
-                      {activityLog.length} events
-                    </span>
-                  </div>
-                  <div
-                    ref={activityLogRef}
-                    className="max-h-[200px] overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-300 dark:scrollbar-thumb-neutral-700"
-                  >
-                    <AnimatePresence initial={false}>
-                      {activityLog.map((entry, idx) => {
-                        const isLatest = idx === activityLog.length - 1;
-                        const isCompleteEntry = entry.fileName === "✓ Complete";
-                        const ActionIcon =
-                          entry.action === "fetch" ? Download :
-                          entry.action === "parse" ? Code2 :
-                          entry.action === "analyze" ? Brain :
-                          entry.action === "write" ? PenLine :
-                          Eye;
-
-                        return (
-                          <motion.div
-                            key={entry.id}
-                            initial={{ opacity: 0, y: 8, height: 0 }}
-                            animate={{ opacity: 1, y: 0, height: "auto" }}
-                            transition={{ duration: 0.2, ease: "easeOut" }}
-                            className={`flex items-start gap-2.5 px-3 py-1.5 text-[11px] font-mono border-b border-neutral-100 dark:border-neutral-900 last:border-b-0 ${
-                              isCompleteEntry
-                                ? "bg-emerald-50 dark:bg-emerald-950/30"
-                                : idx % 2 === 0
-                                ? "bg-transparent"
-                                : "bg-neutral-100/50 dark:bg-neutral-900/30"
-                            }`}
-                          >
-                            <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
-                              {isLatest && !isCompleteEntry && (
-                                <span className="relative flex h-1.5 w-1.5">
-                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
-                                </span>
-                              )}
-                              {isCompleteEntry ? (
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                              ) : (
-                                <ActionIcon
-                                  className={`w-3 h-3 ${
-                                    entry.action === "fetch" ? "text-neutral-600 dark:text-neutral-400" :
-                                    entry.action === "parse" ? "text-neutral-700 dark:text-neutral-300" :
-                                    entry.action === "analyze" ? "text-neutral-800 dark:text-neutral-200" :
-                                    entry.action === "write" ? "text-neutral-900 dark:text-neutral-100" :
-                                    "text-neutral-500 dark:text-neutral-400"
-                                  }`}
-                                />
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <span className={`${
-                                isCompleteEntry
-                                  ? "text-emerald-700 dark:text-emerald-300 font-bold"
-                                  : "text-neutral-800 dark:text-neutral-200"
-                              }`}>
-                                {entry.detail || entry.fileName}
-                              </span>
-                              {entry.detail && entry.fileName && !isCompleteEntry && entry.fileName !== entry.detail && (
-                                <span className="ml-1.5 text-neutral-400 dark:text-neutral-500 truncate">
-                                  {entry.fileName}
-                                </span>
-                              )}
-                            </div>
-                          </motion.div>
-                        );
-                      })}
-                    </AnimatePresence>
-                  </div>
-                </div>
-              )}
-
-              {/* Stage Stepper Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5 relative z-10">
-                {STAGES.map((s) => {
-                  const isCompleted = s.id < currentStage || roundedProgress >= 100;
-                  const isCurrent = s.id === currentStage && roundedProgress < 100;
-                  const StageItemIcon = s.icon;
-                  return (
-                    <motion.div
-                      key={s.id}
-                      initial={false}
-                      animate={{
-                        scale: isCurrent ? 1.03 : 1,
-                        opacity: isCurrent || isCompleted ? 1 : 0.5,
-                      }}
-                      className={`flex flex-col items-center p-3 rounded-2xl border text-center transition-all ${
-                        isCompleted
-                          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400"
-                          : isCurrent
-                          ? "bg-neutral-900/10 dark:bg-white/10 border-neutral-900 dark:border-white text-neutral-950 dark:text-white shadow-md ring-1 ring-neutral-900/20 dark:ring-white/20"
-                          : "bg-neutral-50 dark:bg-neutral-800/40 border-neutral-200 dark:border-neutral-800 text-neutral-400"
-                      }`}
-                    >
-                      <div
-                        className={`w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 ${
-                          isCompleted
-                            ? "bg-emerald-500 text-white"
-                            : isCurrent
-                            ? "bg-neutral-900 dark:bg-white text-white dark:text-neutral-900"
-                            : "bg-neutral-200 dark:bg-neutral-700 text-neutral-500"
-                        }`}
-                      >
-                        {isCompleted ? <Check className="w-4 h-4 stroke-[3]" /> : <StageItemIcon className="w-4 h-4" />}
-                      </div>
-                      <span className="text-[11px] font-mono font-bold leading-tight">{s.title}</span>
-                      <span className="text-[9px] font-mono opacity-80 truncate w-full mt-0.5">{s.subtitle}</span>
-                    </motion.div>
-                  );
-                })}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         {/* Error Alert */}
         {error && (
