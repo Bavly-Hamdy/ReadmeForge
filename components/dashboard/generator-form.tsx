@@ -111,6 +111,7 @@ export function GeneratorForm() {
 
   const stepperRef = useRef<HTMLDivElement>(null);
   const activityLogRef = useRef<HTMLDivElement>(null);
+  const startTimeRef = useRef<number>(0);
 
   // Auto-detect repo owner when repoUrl changes if authorName is empty
   const handleRepoUrlChange = (url: string) => {
@@ -123,37 +124,41 @@ export function GeneratorForm() {
 
   // Stopwatch timer for real-time generation elapsed display
   useEffect(() => {
-    if (!isGenerating) {
+    if (!showProgressCard || isFinished) {
       return;
     }
 
-    const startTime = Date.now();
     const timerInterval = setInterval(() => {
-      setElapsedMs(Date.now() - startTime);
+      if (startTimeRef.current > 0) {
+        setElapsedMs(Date.now() - startTimeRef.current);
+      }
     }, 100);
 
     return () => clearInterval(timerInterval);
-  }, [isGenerating]);
+  }, [showProgressCard, isFinished]);
 
   // Smooth continuous progress animation toward targetProgress
   useEffect(() => {
-    if (!isGenerating) return;
+    if (!showProgressCard) return;
+    if (isFinished) {
+      setDisplayProgress(100);
+      return;
+    }
 
     const interval = setInterval(() => {
       setDisplayProgress((prev) => {
-        if (isFinished && prev >= 99.5) return 100;
         if (prev < targetProgress) {
-          const delta = (targetProgress - prev) * 0.15;
-          return prev + Math.max(0.5, delta);
+          const delta = (targetProgress - prev) * 0.2;
+          return Math.min(targetProgress, prev + Math.max(0.5, delta));
         }
         // Creep forward slowly so the bar never freezes
-        if (prev < 98 && !isFinished) return prev + 0.08;
+        if (prev < 98) return prev + 0.08;
         return prev;
       });
     }, 40);
 
     return () => clearInterval(interval);
-  }, [isGenerating, targetProgress, isFinished]);
+  }, [showProgressCard, targetProgress, isFinished]);
 
   // Auto-scroll activity log to latest entry
   useEffect(() => {
@@ -164,7 +169,8 @@ export function GeneratorForm() {
 
   // Handle completion transitions
   useEffect(() => {
-    if (isFinished && displayProgress >= 100 && apiResult) {
+    if (isFinished && apiResult) {
+      setDisplayProgress(100);
       setIsGenerating(false);
       // Allow user 3.5 seconds to see 100% completed terminal & stages before gentle auto-scroll to preview
       const timeout = setTimeout(() => {
@@ -176,7 +182,7 @@ export function GeneratorForm() {
 
       return () => clearTimeout(timeout);
     }
-  }, [isFinished, displayProgress, apiResult, setIsGenerating]);
+  }, [isFinished, apiResult, setIsGenerating]);
 
   const handleAddCollaborator = (e: React.FormEvent) => {
     e.preventDefault();
@@ -203,18 +209,19 @@ export function GeneratorForm() {
       return;
     }
 
+    setError(null);
+    setIsAuthError(false);
     setIsGenerating(true);
     setShowProgressCard(true);
-    setTargetProgress(3);
-    setDisplayProgress(0);
+    setTargetProgress(5);
+    setDisplayProgress(5);
     setCurrentStage(0);
-    setServerMessage("Initializing pipeline...");
+    setServerMessage("Connecting & inspecting codebase...");
+    startTimeRef.current = Date.now();
     setElapsedMs(0);
     setIsFinished(false);
     setApiResult(null);
     setActivityLog([]);
-    setError(null);
-    setIsAuthError(false);
     setGeneratedMarkdown(null);
 
     // Scroll progress card into view smoothly
@@ -322,6 +329,7 @@ export function GeneratorForm() {
               setDigest(data.digest);
               setApiResult({ markdown: data.markdown, digest: data.digest });
               setTargetProgress(100);
+              setDisplayProgress(100);
               setIsFinished(true);
               setActivityLog((prev) => [
                 ...prev,
@@ -356,8 +364,8 @@ export function GeneratorForm() {
 
   const activeStageObj = STAGES[currentStage] || STAGES[0];
   const StageIcon = activeStageObj.icon;
-  const roundedProgress = Math.min(100, Math.floor(displayProgress));
-  const isComplete = isFinished && roundedProgress >= 100;
+  const roundedProgress = isFinished ? 100 : Math.min(100, Math.floor(displayProgress));
+  const isComplete = isFinished || roundedProgress >= 100;
 
   const currentPersona = (persona as Persona) || "ENTERPRISE";
 
@@ -758,8 +766,8 @@ export function GeneratorForm() {
               {/* Stage Stepper Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5 relative z-10">
                 {STAGES.map((s) => {
-                  const isCompleted = s.id < currentStage || roundedProgress >= 100;
-                  const isCurrent = s.id === currentStage && roundedProgress < 100;
+                  const isCompleted = s.id < currentStage || isComplete;
+                  const isCurrent = s.id === currentStage && !isComplete;
                   const StageItemIcon = s.icon;
                   return (
                     <motion.div

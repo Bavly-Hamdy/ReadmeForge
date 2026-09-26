@@ -126,7 +126,7 @@ export const useReadmeStore = create<ReadmeStore>((set) => ({
   setSuggestedTopics: (suggestedTopics) => set({ suggestedTopics }),
   setReleaseNotes: (releaseNotes) => set({ releaseNotes }),
   setDigest: (digest) => set({ digest }),
-  setError: (error) => set({ error, isGenerating: false }),
+  setError: (error) => set({ error, ...(error ? { isGenerating: false } : {}) }),
   pushEditHistory: (content) =>
     set((state) => ({
       editHistory: [...state.editHistory.slice(-20), content],
