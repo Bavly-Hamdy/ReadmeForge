@@ -20,70 +20,94 @@ export async function GET(req: NextRequest) {
     const offset = Math.max(parseInt(searchParams.get("offset") || "0", 10), 0);
 
     const userGithubId = session.user.githubId || session.user.username;
-    const dbUser = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { githubId: userGithubId },
-          { username: session.user.username },
-        ],
-      },
-    });
-
-    if (!dbUser) {
-      return NextResponse.json({ history: [], total: 0 });
+    
+    let dbUser = null;
+    try {
+      dbUser = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { githubId: userGithubId },
+            { username: session.user.username },
+          ],
+        },
+      });
+    } catch (dbErr: unknown) {
+      const errMsg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+      console.warn("[API History] Database connection error:", errMsg);
+      return NextResponse.json({
+        history: [],
+        total: 0,
+        dbConfigured: false,
+        message: "Cloud database persistence is not connected. In production (Vercel Serverless), connect a PostgreSQL / Neon database to store your generation history.",
+      });
     }
 
-    const [readmes, total] = await Promise.all([
-      prisma.generatedReadme.findMany({
-        where: {
-          repository: {
-            userId: dbUser.id,
-          },
-        },
-        include: {
-          repository: {
-            select: {
-              owner: true,
-              name: true,
-              fullName: true,
-              defaultBranch: true,
+    if (!dbUser) {
+      return NextResponse.json({ history: [], total: 0, dbConfigured: true });
+    }
+
+    try {
+      const [readmes, total] = await Promise.all([
+        prisma.generatedReadme.findMany({
+          where: {
+            repository: {
+              userId: dbUser.id,
             },
           },
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-        skip: offset,
-        take: limit,
-      }),
-      prisma.generatedReadme.count({
-        where: {
-          repository: {
-            userId: dbUser.id,
+          include: {
+            repository: {
+              select: {
+                owner: true,
+                name: true,
+                fullName: true,
+                defaultBranch: true,
+              },
+            },
           },
-        },
-      }),
-    ]);
+          orderBy: {
+            createdAt: "desc",
+          },
+          skip: offset,
+          take: limit,
+        }),
+        prisma.generatedReadme.count({
+          where: {
+            repository: {
+              userId: dbUser.id,
+            },
+          },
+        }),
+      ]);
 
-    const history = readmes.map((r) => {
-      const cleanContent = r.content.replace(/\r\n/g, "\n").trim();
-      return {
-        id: r.id,
-        repoFullName: r.repository.fullName,
-        repoOwner: r.repository.owner,
-        repoName: r.repository.name,
-        persona: r.persona,
-        contentPreview: cleanContent.slice(0, 200),
-        contentLength: r.content.length,
-        createdAt: r.createdAt.toISOString(),
-        updatedAt: r.updatedAt.toISOString(),
-      };
-    });
+      const history = readmes.map((r) => {
+        const cleanContent = r.content.replace(/\r\n/g, "\n").trim();
+        return {
+          id: r.id,
+          repoFullName: r.repository.fullName,
+          repoOwner: r.repository.owner,
+          repoName: r.repository.name,
+          persona: r.persona,
+          contentPreview: cleanContent.slice(0, 200),
+          contentLength: r.content.length,
+          createdAt: r.createdAt.toISOString(),
+          updatedAt: r.updatedAt.toISOString(),
+        };
+      });
 
-    return NextResponse.json({ history, total });
+      return NextResponse.json({ history, total, dbConfigured: true });
+    } catch (queryErr: unknown) {
+      const errMsg = queryErr instanceof Error ? queryErr.message : String(queryErr);
+      console.warn("[API History Query Error]:", errMsg);
+      return NextResponse.json({
+        history: [],
+        total: 0,
+        dbConfigured: false,
+        message: "Database query failed. Please verify your database connection in production.",
+      });
+    }
   } catch (error: unknown) {
     console.error("[API History Error]:", error);
     const message = error instanceof Error ? error.message : "Failed to fetch history";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message, dbConfigured: false }, { status: 500 });
   }
 }

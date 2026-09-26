@@ -39,6 +39,7 @@ export function HistoryDrawer({ isOpen, onClose }: HistoryDrawerProps) {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [dbWarning, setDbWarning] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -57,6 +58,7 @@ export function HistoryDrawer({ isOpen, onClose }: HistoryDrawerProps) {
     const fetchHistory = async () => {
       setIsLoading(true);
       setError(null);
+      setDbWarning(null);
       try {
         const res = await fetch("/api/history", { cache: "no-store" });
         if (!res.ok) {
@@ -69,6 +71,9 @@ export function HistoryDrawer({ isOpen, onClose }: HistoryDrawerProps) {
         }
         const data = await res.json();
         setHistory(data.history || []);
+        if (data.dbConfigured === false) {
+          setDbWarning(data.message || "Cloud database is not connected.");
+        }
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Error loading history");
       } finally {
@@ -253,6 +258,24 @@ export function HistoryDrawer({ isOpen, onClose }: HistoryDrawerProps) {
                       <div className="h-8 w-full bg-zinc-800/40 rounded-lg pt-1" />
                     </div>
                   ))}
+                </div>
+              ) : dbWarning ? (
+                <div className="flex flex-col items-center justify-center rounded-xl border border-amber-900/40 bg-amber-950/20 p-6 text-center my-4 space-y-3">
+                  <div className="p-2.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    <AlertCircle className="h-6 w-6 text-amber-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-amber-300">Cloud Database Setup Required</p>
+                    <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                      {dbWarning}
+                    </p>
+                  </div>
+                  <div className="w-full text-left bg-zinc-950/70 border border-zinc-800/80 rounded-lg p-3 text-[11px] font-mono text-zinc-400 space-y-1">
+                    <p className="text-zinc-300 font-semibold text-[10px] uppercase tracking-wider">Quick Setup (Vercel):</p>
+                    <p>1. Open your Vercel Project → Storage → Neon Postgres</p>
+                    <p>2. Connect database (DATABASE_URL is set automatically)</p>
+                    <p>3. Redeploy your project</p>
+                  </div>
                 </div>
               ) : error ? (
                 <div className="flex flex-col items-center justify-center rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-8 text-center my-6">

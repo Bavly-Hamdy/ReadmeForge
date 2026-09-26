@@ -75,10 +75,23 @@ export function ReadmePreview() {
 
   // Export menu & ZIP state
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exportMenuAlign, setExportMenuAlign] = useState<"left" | "right">("right");
   const [isZipping, setIsZipping] = useState(false);
   const [copiedReadme, setCopiedReadme] = useState(false);
   const [copiedLicense, setCopiedLicense] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  // Dynamically align export dropdown to avoid overflowing off-screen
+  useEffect(() => {
+    if (exportMenuOpen && exportMenuRef.current) {
+      const rect = exportMenuRef.current.getBoundingClientRect();
+      if (rect.left < 270) {
+        setExportMenuAlign("left");
+      } else {
+        setExportMenuAlign("right");
+      }
+    }
+  }, [exportMenuOpen]);
 
   // Close export menu on click outside
   useEffect(() => {
@@ -323,10 +336,10 @@ export function ReadmePreview() {
       initial={{ opacity: 0, y: 40, scale: 0.96 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-      className="w-full max-w-5xl mx-auto mt-12 rounded-2xl border border-neutral-300 dark:border-neutral-800 overflow-hidden shadow-2xl bg-white dark:bg-neutral-950 scroll-mt-8"
+      className="w-full max-w-5xl mx-auto mt-12 rounded-2xl border border-neutral-300 dark:border-neutral-800 shadow-2xl bg-white dark:bg-neutral-950 scroll-mt-8 relative"
     >
       {/* Top Header Bar */}
-      <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 flex flex-wrap items-center justify-between gap-4">
+      <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 rounded-t-2xl flex flex-wrap items-center justify-between gap-4 relative z-30">
         {/* File Tabs: README.md vs LICENSE */}
         <div className="flex items-center gap-3">
           <div className="flex items-center bg-white dark:bg-neutral-950 p-1 rounded-xl border border-neutral-300 dark:border-neutral-800 shadow-sm">
@@ -491,7 +504,9 @@ export function ReadmePreview() {
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95, y: 6 }}
                   transition={{ duration: 0.15, ease: "easeOut" }}
-                  className="absolute right-0 mt-2 w-60 rounded-xl border border-neutral-300 dark:border-neutral-800 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl shadow-2xl z-50 p-1.5 font-mono text-xs text-neutral-800 dark:text-neutral-200"
+                  className={`absolute ${
+                    exportMenuAlign === "left" ? "left-0" : "right-0"
+                  } mt-2 w-64 max-w-[calc(100vw-32px)] rounded-xl border border-neutral-300 dark:border-neutral-800 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl shadow-2xl z-50 p-1.5 font-mono text-xs text-neutral-800 dark:text-neutral-200`}
                 >
                   <div className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
                     File Downloads

@@ -30,6 +30,19 @@ export function TranslateDropdown({
   } = useReadmeStore();
 
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [menuAlign, setMenuAlign] = useState<"left" | "right">("right");
+
+  // Dynamically align dropdown
+  useEffect(() => {
+    if (isOpen && dropdownRef.current) {
+      const rect = dropdownRef.current.getBoundingClientRect();
+      if (rect.left < 270) {
+        setMenuAlign("left");
+      } else {
+        setMenuAlign("right");
+      }
+    }
+  }, [isOpen]);
 
   // Close on outside click
   useEffect(() => {
@@ -109,7 +122,9 @@ export function TranslateDropdown({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 6, scale: 0.96 }}
             transition={{ duration: 0.15 }}
-            className="absolute right-0 mt-2 w-64 max-h-80 overflow-y-auto rounded-xl bg-zinc-900 border border-zinc-750 shadow-xl shadow-black/80 py-1 z-50 text-zinc-200"
+            className={`absolute ${
+              menuAlign === "left" ? "left-0" : "right-0"
+            } mt-2 w-64 max-w-[calc(100vw-32px)] max-h-80 overflow-y-auto rounded-xl bg-zinc-900 border border-zinc-750 shadow-xl shadow-black/80 py-1 z-50 text-zinc-200`}
           >
             <div className="px-3 py-1.5 border-b border-zinc-800 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider flex items-center justify-between">
               <span>Select Language</span>
